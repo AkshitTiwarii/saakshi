@@ -22,5 +22,10 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "mobile-app",
+    "dist",
+    "node_modules"
+  ]
 }

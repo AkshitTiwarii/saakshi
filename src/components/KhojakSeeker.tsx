@@ -17,7 +17,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, Timestamp } from 'firebase/firestore';
-import { searchEvidence } from '../services/geminiService';
+import { searchEvidence } from '../services/geminiService.ts';
 
 export const KhojakSeeker = () => {
   const navigate = useNavigate();
@@ -59,7 +59,7 @@ export const KhojakSeeker = () => {
         uid: auth.currentUser?.uid,
         source: 'Khojak AI Search',
         details: result,
-        status: 'FOUND',
+        status: 'found',
         query: searchQuery,
         timestamp: Timestamp.now()
       });
@@ -183,7 +183,7 @@ export const KhojakSeeker = () => {
                     <item.icon size={32} />
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider uppercase ${
-                    item.status === 'FOUND' ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'
+                    item.status?.toLowerCase() === 'found' ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'
                   }`}>
                     {item.status}
                   </span>

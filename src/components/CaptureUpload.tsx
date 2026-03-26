@@ -64,7 +64,7 @@ export const CaptureUpload = () => {
         fileName: file.name,
         classification: result,
         geoTag: locationData,
-        createdAt: Timestamp.now()
+        timestamp: Timestamp.now()
       });
 
       setClassification(result);

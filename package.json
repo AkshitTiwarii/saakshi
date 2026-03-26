@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "worker:anchor": "tsx workers/hashAnchoring/hashAnchorWorker.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

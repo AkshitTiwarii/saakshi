@@ -14,7 +14,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
-import { classifyFragment } from '../services/geminiService';
+import { classifyFragment } from '../services/geminiService.ts';
 import { SuccessFeedback } from './SuccessFeedback';
 
 export const CaptureVoice = () => {
@@ -110,7 +110,7 @@ export const CaptureVoice = () => {
         type: 'voice',
         classification: result,
         geoTag: locationData,
-        createdAt: Timestamp.now()
+        timestamp: Timestamp.now()
       });
 
       setClassification(result);

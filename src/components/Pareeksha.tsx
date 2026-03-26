@@ -16,7 +16,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { generateCrossExamination } from '../services/geminiService';
+import { generateCrossExamination } from '../services/geminiService.ts';
 
 export const Pareeksha = () => {
   const navigate = useNavigate();

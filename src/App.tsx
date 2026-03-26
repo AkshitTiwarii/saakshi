@@ -33,7 +33,8 @@ import {
   LogOut,
   Clock,
   Info,
-  PenTool
+  PenTool,
+  LayoutGrid
 } from 'lucide-react';
 import { 
   auth, 
@@ -42,6 +43,8 @@ import {
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   signOut 
 } from 'firebase/auth';
@@ -58,7 +61,7 @@ import {
 } from 'firebase/firestore';
 import { EMOTIONS, CAPTURE_METHODS } from './constants';
 import { Fragment, Evidence, Case, UserProfile } from './types';
-import { classifyFragment, generateAdversarialAnalysis } from './services/geminiService';
+import { classifyFragment, generateAdversarialAnalysis } from './services/geminiService.ts';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { KhojakSeeker } from './components/KhojakSeeker';
 import { Pareeksha } from './components/Pareeksha';
@@ -77,9 +80,9 @@ const Layout = ({ children, showNav = true }: { children: React.ReactNode, showN
 
   const navItems = [
     { id: 'home', label: 'Home', icon: Home, path: '/dashboard' },
+    { id: 'map', label: 'Map', icon: LayoutGrid, path: '/screen-map' },
     { id: 'khojak', label: 'Khojak', icon: Search, path: '/khojak' },
     { id: 'war-room', label: 'War Room', icon: Shield, path: '/war-room' },
-    { id: 'virodhi', label: 'Virodhi', icon: AlertTriangle, path: '/war-room#virodhi' },
     { id: 'practice', label: 'Practice', icon: Gavel, path: '/practice' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
   ];
@@ -152,6 +155,12 @@ const SplashScreen = () => {
         >
           Start
         </button>
+        <button
+          onClick={() => navigate('/screen-map')}
+          className="w-full mt-3 bg-white/70 text-on-surface py-4 rounded-full text-sm font-bold tracking-wide shadow-sm hover:opacity-90 transition-all"
+        >
+          Explore All Screens
+        </button>
       </div>
     </div>
   );
@@ -159,36 +168,7 @@ const SplashScreen = () => {
 
 const OnboardingScreen = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(auth.currentUser);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
-    return () => unsubscribe();
-  }, []);
-
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      // Check if user exists in Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          role: 'user',
-          createdAt: Timestamp.now()
-        });
-      }
-      navigate('/feeling-checkin');
-    } catch (error) {
-      console.error("Login failed", error);
-    }
-  };
+  const handleContinue = () => navigate('/feeling-checkin');
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-8 md:px-24 ethereal-gradient">
@@ -220,10 +200,10 @@ const OnboardingScreen = () => {
         
         <div className="mt-8">
           <button 
-            onClick={handleLogin}
+            onClick={handleContinue}
             className="bg-primary text-on-primary px-12 py-5 rounded-full text-lg font-semibold tracking-wide hover:opacity-90 transition-all active:scale-95 shadow-lg"
           >
-            {user ? 'Continue' : 'Connect with Google'}
+            Continue
           </button>
         </div>
       </div>
@@ -450,6 +430,21 @@ const Dashboard = () => {
           ))}
         </div>
 
+        <section className="bg-white p-6 rounded-3xl border border-outline-variant/10 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Screen Map</h2>
+              <p className="text-on-surface-variant text-sm">Jump directly to onboarding, capture, war room, khojak, pareeksha and settings.</p>
+            </div>
+            <button
+              onClick={() => navigate('/screen-map')}
+              className="px-5 py-2 rounded-full bg-primary text-on-primary text-sm font-bold"
+            >
+              Open Map
+            </button>
+          </div>
+        </section>
+
         <section className="bg-surface-container-low p-8 rounded-3xl border border-outline-variant/10">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold">Recent Activity</h2>
@@ -463,7 +458,7 @@ const Dashboard = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold truncate">{f.content.substring(0, 40)}...</p>
-                  <p className="text-[10px] text-on-surface-variant uppercase font-bold">{new Date(f.timestamp.seconds * 1000).toLocaleDateString()}</p>
+                  <p className="text-[10px] text-on-surface-variant uppercase font-bold">{new Date(((f.timestamp || (f as any).createdAt)?.seconds ?? Math.floor(Date.now() / 1000)) * 1000).toLocaleDateString()}</p>
                 </div>
                 <ChevronRight size={16} className="text-on-surface-variant/40" />
               </div>
@@ -678,7 +673,7 @@ const WarRoom = () => {
                         {f.type === 'voice' ? <Mic size={14} /> : f.type === 'drawing' ? <PenTool size={14} /> : <FileText size={14} />}
                       </div>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
-                        {new Date(f.timestamp.seconds * 1000).toLocaleDateString()}
+                        {new Date(((f.timestamp || (f as any).createdAt)?.seconds ?? Math.floor(Date.now() / 1000)) * 1000).toLocaleDateString()}
                       </span>
                     </div>
                     {f.geoTag && (
@@ -845,6 +840,54 @@ const WarRoom = () => {
   );
 };
 
+const ScreenMap = () => {
+  const navigate = useNavigate();
+
+  const allScreens = [
+    { label: 'Splash', path: '/' },
+    { label: 'Onboarding', path: '/onboarding' },
+    { label: 'Feeling Check-In', path: '/feeling-checkin' },
+    { label: 'Capture Method', path: '/capture-method' },
+    { label: 'Capture Write', path: '/capture/write' },
+    { label: 'Capture Voice', path: '/capture/speak' },
+    { label: 'Capture Draw', path: '/capture/draw' },
+    { label: 'Capture Upload', path: '/capture/upload' },
+    { label: 'Dashboard', path: '/dashboard' },
+    { label: 'Khojak', path: '/khojak' },
+    { label: 'War Room', path: '/war-room' },
+    { label: 'Pareeksha', path: '/practice' },
+    { label: 'Docs', path: '/docs' },
+    { label: 'Settings', path: '/settings' },
+  ];
+
+  return (
+    <Layout>
+      <div className="pt-24 px-6 max-w-4xl mx-auto pb-32">
+        <div className="mb-8">
+          <h1 className="text-3xl font-black tracking-tight text-primary">Screen Map</h1>
+          <p className="text-on-surface-variant mt-2">Use this to preview every major flow without getting stuck in a disconnected path.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {allScreens.map((screen) => (
+            <button
+              key={screen.path}
+              onClick={() => navigate(screen.path)}
+              className="text-left p-5 bg-white rounded-2xl border border-outline-variant/10 hover:shadow-md transition-all"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-on-surface">{screen.label}</span>
+                <ChevronRight className="text-primary" size={16} />
+              </div>
+              <p className="text-xs text-on-surface-variant mt-2">{screen.path}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Layout>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -860,6 +903,7 @@ export default function App() {
           <Route path="/capture/speak" element={<CaptureVoice />} />
           <Route path="/capture/draw" element={<CaptureDraw />} />
           <Route path="/capture/upload" element={<CaptureUpload />} />
+          <Route path="/screen-map" element={<ScreenMap />} />
           <Route path="/war-room" element={<WarRoom />} />
           <Route path="/khojak" element={<KhojakSeeker />} />
           <Route path="/practice" element={<Pareeksha />} />

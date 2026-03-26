@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: Saakshi API Contract (MVP)
+  version: 0.1.0
+servers:
+  - url: /api
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /ai/classify-fragment:
+    post:
+      summary: Extract structured cues from a memory fragment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+      responses:
+        '200':
+          description: Parsed fragment
+  /ai/analyze-image:
+    post:
+      summary: Analyze image/drawing for clues and tone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base64Image]
+              properties:
+                base64Image:
+                  type: string
+      responses:
+        '200':
+          description: Parsed image signals
+  /ai/search-evidence:
+    post:
+      summary: Search corroborating public evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+      responses:
+        '200':
+          description: Search summary
+  /ai/adversarial-analysis:
+    post:
+      summary: Generate VIRODHI and RAKSHA outputs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fragments:
+                  type: array
+                  items:
+                    type: object
+                evidence:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Adversarial analysis object
+  /ai/cross-examination:
+    post:
+      summary: Generate cross-exam practice question + coaching
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fragments:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Coaching payload

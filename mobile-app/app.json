@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Saakshi",
+    "slug": "saakshi-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.saakshi.mobile"
+    },
+    "android": {
+      "package": "com.saakshi.mobile"
+    },
+    "plugins": [],
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}

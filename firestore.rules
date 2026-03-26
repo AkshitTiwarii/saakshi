@@ -97,26 +97,27 @@ service cloud.firestore {
     }
 
     function isValidFragment(data) {
-      return hasOnlyAllowedFields(['uid', 'type', 'content', 'emotion', 'timestamp', 'classification']) &&
+      return hasOnlyAllowedFields(['uid', 'type', 'content', 'emotion', 'timestamp', 'classification', 'geoTag', 'fileType', 'fileName']) &&
              data.uid is string &&
-             data.type in ['text', 'voice', 'drawing'] &&
+             data.type in ['text', 'voice', 'drawing', 'upload'] &&
              data.content is string &&
              data.timestamp is timestamp;
     }
 
     function isValidEvidence(data) {
-      return hasOnlyAllowedFields(['uid', 'source', 'status', 'details', 'timestamp']) &&
+      return hasOnlyAllowedFields(['uid', 'source', 'status', 'details', 'timestamp', 'query']) &&
              data.uid is string &&
-             data.source in ['IMD', 'Ola', 'GoogleMaps', 'CCTV'] &&
+             data.source is string &&
              data.status in ['found', 'verified', 'searching'] &&
              data.timestamp is timestamp;
     }
 
     function isValidCase(data) {
-      return hasOnlyAllowedFields(['uid', 'title', 'strengthScore', 'adversarialAnalysis', 'createdAt']) &&
+      return hasOnlyAllowedFields(['uid', 'title', 'strengthScore', 'adversarialAnalysis', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
              data.strengthScore is number &&
-             data.createdAt is timestamp;
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
 
     // ===============================================================
@@ -138,9 +139,9 @@ service cloud.firestore {
 
     match /evidence/{evidenceId} {
       allow read: if isDocOwner() || isAdmin();
-      allow create: if isAdmin(); // Only system/admin can create verified evidence
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow create: if isAuthenticated() && isValidEvidence(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && isValidEvidence(request.resource.data) && isDocOwner() && uidNotModified();
+      allow delete: if isDocOwner() || isAdmin();
     }
 
     match /cases/{caseId} {

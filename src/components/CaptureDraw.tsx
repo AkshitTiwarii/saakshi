@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../firebase';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 
-import { analyzeImage } from '../services/geminiService';
+import { analyzeImage } from '../services/geminiService.ts';
 import { SuccessFeedback } from './SuccessFeedback';
 import { AnimatePresence } from 'motion/react';
 
@@ -126,7 +126,7 @@ export const CaptureDraw = () => {
         uid: auth.currentUser?.uid,
         content: dataUrl,
         type: 'drawing',
-        createdAt: Timestamp.now(),
+        timestamp: Timestamp.now(),
         classification: result,
         geoTag: locationData
       });
