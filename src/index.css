@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-primary: #4d50c5;
+  --color-primary-dim: #4143b9;
+  --color-primary-container: #babbff;
+  --color-on-primary: #fbf7ff;
+  --color-on-primary-container: #2828a1;
+  
+  --color-secondary: #4d56b0;
+  --color-secondary-dim: #414aa3;
+  --color-secondary-container: #e0e0ff;
+  --color-on-secondary: #fbf8ff;
+  --color-on-secondary-container: #3f48a1;
+  
+  --color-tertiary: #715578;
+  --color-tertiary-dim: #65496c;
+  --color-tertiary-container: #f5d1fb;
+  --color-on-tertiary: #fff7fb;
+  --color-on-tertiary-container: #604567;
+  
+  --color-surface: #f8f9ff;
+  --color-on-surface: #2d333b;
+  --color-on-surface-variant: #5a5f68;
+  --color-surface-container-low: #f1f3fa;
+  --color-surface-container-high: #e4e8f2;
+  --color-surface-container-highest: #dee3ed;
+  --color-surface-container-lowest: #ffffff;
+  
+  --color-error: #ac3149;
+  --color-on-error: #fff7f7;
+  --color-error-container: #f76a80;
+  --color-on-error-container: #68001f;
+  
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-sans;
+  }
+}
+
+.glass-card {
+  @apply bg-white/70 backdrop-blur-3xl border border-white/20 shadow-sm;
+}
+
+.ethereal-gradient {
+  background: radial-gradient(circle at 50% 50%, #fbf8ff 0%, #f1f3fa 100%);
+}
+

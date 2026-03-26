@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user information and their role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Fragment": {
+      "title": "Memory Fragment",
+      "description": "A single piece of memory captured from the user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "voice", "drawing"] },
+        "content": { "type": "string", "description": "The raw text or reference to storage" },
+        "emotion": { "type": "string", "description": "Detected emotion" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "classification": {
+          "type": "object",
+          "properties": {
+            "time": { "type": "string" },
+            "location": { "type": "string" },
+            "sensory": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "required": ["uid", "type", "content", "timestamp"]
+    },
+    "Evidence": {
+      "title": "Verified Evidence",
+      "description": "Data points verified by external systems (KHOJAK).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "source": { "type": "string", "enum": ["IMD", "Ola", "GoogleMaps", "CCTV"] },
+        "status": { "type": "string", "enum": ["found", "verified", "searching"] },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "source", "status"]
+    },
+    "Case": {
+      "title": "Legal Case",
+      "description": "The overall case structure combining fragments and evidence.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "title": { "type": "string" },
+        "strengthScore": { "type": "number" },
+        "status": { "type": "string" },
+        "adversarialAnalysis": {
+          "type": "object",
+          "properties": {
+            "virodhi": { "type": "array", "items": { "type": "object" } },
+            "raksha": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "strengthScore"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "User profile data"
+    },
+    "/fragments/{fragmentId}": {
+      "schema": "Fragment",
+      "description": "Memory fragments captured"
+    },
+    "/evidence/{evidenceId}": {
+      "schema": "Evidence",
+      "description": "Verified evidence data"
+    },
+    "/cases/{caseId}": {
+      "schema": "Case",
+      "description": "Legal case data"
+    }
+  }
+}

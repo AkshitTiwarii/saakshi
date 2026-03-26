@@ -1,0 +1,9 @@
+{
+  "name": "SAAKSHI",
+  "description": "A trauma-aware evidence system that converts fragmented memories into legally defensible reality using adversarial AI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
