@@ -7,6 +7,13 @@ import {
   useLocation 
 } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+} from '@clerk/clerk-react';
 import { 
   Shield, 
   Mic, 
@@ -71,6 +78,9 @@ import { CaptureUpload } from './components/CaptureUpload';
 import { DocsScreen } from './components/DocsScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { SuccessFeedback } from './components/SuccessFeedback';
+import { OfficerPortalV2 } from './components/OfficerPortalV2';
+import { AdminPortal } from './components/AdminPortal';
+import { OfficerCaseWorkspace } from './components/OfficerCaseWorkspace';
 
 // --- Components ---
 
@@ -160,6 +170,12 @@ const SplashScreen = () => {
           className="w-full mt-3 bg-white/70 text-on-surface py-4 rounded-full text-sm font-bold tracking-wide shadow-sm hover:opacity-90 transition-all"
         >
           Explore All Screens
+        </button>
+        <button
+          onClick={() => navigate('/officer-portal')}
+          className="w-full mt-3 bg-on-surface text-white py-4 rounded-full text-sm font-bold tracking-wide shadow-sm hover:opacity-90 transition-all"
+        >
+          Officer Command Portal
         </button>
       </div>
     </div>
@@ -858,6 +874,8 @@ const ScreenMap = () => {
     { label: 'Pareeksha', path: '/practice' },
     { label: 'Docs', path: '/docs' },
     { label: 'Settings', path: '/settings' },
+    { label: 'Officer Portal', path: '/officer-portal' },
+    { label: 'Admin Portal', path: '/admin-portal' },
   ];
 
   return (
@@ -888,14 +906,56 @@ const ScreenMap = () => {
   );
 };
 
+const AuthHeader = () => (
+  <div className="fixed top-3 right-4 z-[100] bg-white/90 backdrop-blur border border-slate-200 rounded-full px-3 py-2 flex items-center gap-3 shadow-sm">
+    <SignedOut>
+      <SignInButton mode="modal">
+        <button className="text-sm font-semibold text-slate-700">Sign In</button>
+      </SignInButton>
+      <SignUpButton mode="modal">
+        <button className="text-sm font-semibold bg-slate-900 text-white px-3 py-1 rounded-full">Sign Up</button>
+      </SignUpButton>
+    </SignedOut>
+    <SignedIn>
+      <UserButton afterSignOutUrl="/" />
+    </SignedIn>
+  </div>
+);
+
+const Protected = ({ children }: { children: React.ReactNode }) => (
+  <>
+    <SignedIn>{children}</SignedIn>
+    <SignedOut>
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center px-6">
+        <div className="max-w-lg bg-white border border-slate-200 rounded-2xl p-8 shadow-sm text-center">
+          <h2 className="text-3xl font-black text-slate-900">Authentication Required</h2>
+          <p className="text-slate-600 mt-3">
+            Sign in to access officer and admin workflows.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <SignInButton mode="modal">
+              <button className="px-4 py-2 rounded-lg border border-slate-300 font-semibold text-slate-700">Sign In</button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button className="px-4 py-2 rounded-lg bg-slate-900 text-white font-semibold">Sign Up</button>
+            </SignUpButton>
+          </div>
+        </div>
+      </div>
+    </SignedOut>
+  </>
+);
+
 // --- Main App ---
 
 export default function App() {
   return (
     <Router>
+      <AuthHeader />
       <AnimatePresence mode="wait">
         <Routes>
-          <Route path="/" element={<SplashScreen />} />
+          <Route path="/" element={<Protected><OfficerPortalV2 /></Protected>} />
+          <Route path="/safe-start" element={<SplashScreen />} />
           <Route path="/onboarding" element={<OnboardingScreen />} />
           <Route path="/feeling-checkin" element={<FeelingCheckIn />} />
           <Route path="/capture-method" element={<CaptureMethod />} />
@@ -910,7 +970,10 @@ export default function App() {
           <Route path="/docs" element={<DocsScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="*" element={<SplashScreen />} />
+          <Route path="/officer-portal" element={<Protected><OfficerPortalV2 /></Protected>} />
+          <Route path="/officer-portal/case/:caseId" element={<Protected><OfficerCaseWorkspace /></Protected>} />
+          <Route path="/admin-portal" element={<Protected><AdminPortal /></Protected>} />
+          <Route path="*" element={<Protected><OfficerPortalV2 /></Protected>} />
         </Routes>
       </AnimatePresence>
     </Router>

@@ -9,9 +9,16 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "worker:anchor": "tsx workers/hashAnchoring/hashAnchorWorker.ts"
+    "worker:anchor": "tsx workers/hashAnchoring/hashAnchorWorker.ts",
+    "seed:officer-data": "tsx scripts/seedOfficerDashboardData.ts",
+    "ml:install": "python -m pip install -r ml-service/requirements.txt",
+    "ml:serve": "python ml-service/main.py",
+    "ml:test": "tsx scripts/testMlRoutes.ts"
   },
   "dependencies": {
+    "@clerk/clerk-react": "^5.61.4",
+    "@google-cloud/language": "^7.2.1",
+    "@google-cloud/speech": "^7.3.0",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
@@ -20,8 +27,10 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.11.0",
+    "firebase-admin": "^12.0.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "pdf-lib": "^1.17.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",

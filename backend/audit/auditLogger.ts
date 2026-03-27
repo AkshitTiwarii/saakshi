@@ -6,11 +6,19 @@ export type AuditAction =
   | "request.completed"
   | "consent.evaluated"
   | "consent.granted"
+  | "consent.revoked"
   | "ai.classify"
   | "ai.analyzeImage"
   | "ai.searchEvidence"
   | "ai.adversarial"
-  | "ai.crossExamination";
+  | "ai.crossExamination"
+  | "victim.login-existing"
+  | "victim.register-new"
+  | "officer.designated"
+  | "officer.list-cases"
+  | "case.access-denied"
+  | "case.access-approved"
+  | "case.details-fetched";
 
 export interface AuditEvent {
   requestId: string;

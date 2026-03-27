@@ -2,16 +2,29 @@
   "expo": {
     "name": "Saakshi",
     "slug": "saakshi-mobile",
+    "scheme": "saakshi",
     "version": "0.1.0",
     "orientation": "portrait",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.saakshi.mobile"
+      "bundleIdentifier": "com.saakshi.mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Saakshi uses your microphone to record trauma-safe voice memories before secure transcription."
+      }
     },
     "android": {
-      "package": "com.saakshi.mobile"
+      "package": "com.saakshi.mobile",
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
-    "plugins": [],
+    "plugins": [
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "clerkPublishableKey": "pk_test_Z2FtZS1tdXN0YW5nLTgyLmNsZXJrLmFjY291bnRzLmRldiQ"
+    },
     "assetBundlePatterns": [
       "**/*"
     ]

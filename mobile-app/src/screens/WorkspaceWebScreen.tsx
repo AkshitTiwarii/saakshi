@@ -1,76 +1,173 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { WebView } from "react-native-webview";
 import { RootStackParamList } from "../../App";
 import { colors } from "../theme/colors";
 import { BottomNav } from "../components/BottomNav";
+import {
+  classifyFragmentForCurrentCase,
+  generateAdversarialAnalysis,
+  generateCrossExamination,
+  getVictimSession,
+  searchEvidence,
+} from "../services/apiClient";
 
 type Props = NativeStackScreenProps<RootStackParamList, "WebWorkspace">;
 
 export function WorkspaceWebScreen({ navigation }: Props) {
-  const initialUrl = useMemo(() => {
-    if (Platform.OS === "android") return "http://10.0.2.2:3000";
-    return "http://localhost:3000";
-  }, []);
+  const [intake, setIntake] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResult, setSearchResult] = useState("");
+  const [strategyResult, setStrategyResult] = useState("");
+  const [crossExamResult, setCrossExamResult] = useState("");
+  const [emotionResult, setEmotionResult] = useState("");
+  const [working, setWorking] = useState<"search" | "strategy" | "cross" | "emotion" | "">("");
 
-  const webRef = useRef<WebView>(null);
-  const [urlInput, setUrlInput] = useState(initialUrl);
-  const [activeUrl, setActiveUrl] = useState(initialUrl);
-  const [loading, setLoading] = useState(true);
+  const session = getVictimSession();
+  const caseId = session?.caseId || "demo-case-001";
+
+  const headline = useMemo(() => {
+    if (session?.caseNumber) return `Case ${session.caseNumber}`;
+    return "Case workspace";
+  }, [session?.caseNumber]);
+
+  const runEvidenceSearch = async () => {
+    if (!searchQuery.trim()) return;
+    setWorking("search");
+    try {
+      const result = await searchEvidence(caseId, searchQuery.trim());
+      setSearchResult(result.text || "No evidence match found yet.");
+    } finally {
+      setWorking("");
+    }
+  };
+
+  const runStrategy = async () => {
+    if (!intake.trim()) return;
+    setWorking("strategy");
+    try {
+      const result = await generateAdversarialAnalysis(caseId, [{ content: intake.trim() }]);
+      const virodhi = result.virodhi.map((v) => `- ${v.title}: ${v.description}`).join("\n");
+      const raksha = result.raksha.map((r) => `- ${r.title}: ${r.description}`).join("\n");
+      setStrategyResult(
+        `Strength Score: ${result.strengthScore}\n\nVirodhi\n${virodhi || "- none"}\n\nRaksha\n${raksha || "- none"}`
+      );
+    } finally {
+      setWorking("");
+    }
+  };
+
+  const runCrossExam = async () => {
+    if (!intake.trim()) return;
+    setWorking("cross");
+    try {
+      const result = await generateCrossExamination(caseId, [{ content: intake.trim() }]);
+      setCrossExamResult(
+        `Question\n${result.question}\n\nCoaching\n${result.coaching}\n\nThreat Type\n${result.threatType}`
+      );
+    } finally {
+      setWorking("");
+    }
+  };
+
+  const runEmotionTagging = async () => {
+    if (!intake.trim()) return;
+    setWorking("emotion");
+    try {
+      const result = await classifyFragmentForCurrentCase(intake.trim());
+      const chips = [result.emotion, result.time, result.location].filter(Boolean).join(" • ");
+      setEmotionResult(chips || "No markers detected yet.");
+    } finally {
+      setWorking("");
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.topBar}>
-        <Text style={styles.title}>Website Workspace</Text>
-        <Text style={styles.sub}>Full web app running inside Android/iOS app</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.hero}>
+          <Text style={styles.kicker}>Native Command Center</Text>
+          <Text style={styles.title}>{headline}</Text>
+          <Text style={styles.sub}>All intelligence and evidence operations run directly in-app.</Text>
+        </View>
 
-      <View style={styles.controls}>
-        <TextInput
-          value={urlInput}
-          onChangeText={setUrlInput}
-          style={styles.input}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="http://10.0.2.2:3000"
-          placeholderTextColor={colors.mutedInk}
-        />
-        <Pressable style={styles.btnPrimary} onPress={() => setActiveUrl(urlInput.trim())}>
-          <Text style={styles.btnPrimaryText}>Load</Text>
-        </Pressable>
-        <Pressable style={styles.btnGhost} onPress={() => webRef.current?.reload()}>
-          <Text style={styles.btnGhostText}>Refresh</Text>
-        </Pressable>
-      </View>
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Narrative Input</Text>
+          <TextInput
+            value={intake}
+            onChangeText={setIntake}
+            style={[styles.input, styles.textArea]}
+            multiline
+            textAlignVertical="top"
+            placeholder="Paste statement, event sequence, or incident memory"
+            placeholderTextColor={colors.mutedInk}
+          />
+          <View style={styles.actionRow}>
+            <Pressable style={styles.primary} onPress={runEmotionTagging}>
+              <Text style={styles.primaryText}>Tag Emotion</Text>
+            </Pressable>
+            <Pressable style={styles.secondary} onPress={runStrategy}>
+              <Text style={styles.secondaryText}>Run Strategy</Text>
+            </Pressable>
+            <Pressable style={styles.secondary} onPress={runCrossExam}>
+              <Text style={styles.secondaryText}>Cross-Exam</Text>
+            </Pressable>
+          </View>
+          {!!emotionResult && <Text style={styles.inlineResult}>Signal: {emotionResult}</Text>}
+        </View>
 
-      <View style={styles.webWrap}>
-        {loading && (
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Evidence Search</Text>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={styles.input}
+            placeholder="Search weather, transit, location, witnesses"
+            placeholderTextColor={colors.mutedInk}
+          />
+          <Pressable style={styles.primary} onPress={runEvidenceSearch}>
+            <Text style={styles.primaryText}>Search Evidence</Text>
+          </Pressable>
+          <Text style={styles.blockResult}>{searchResult || "Search output will appear here."}</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>War Room Output</Text>
+          <Text style={styles.blockResult}>{strategyResult || "Adversarial analysis appears here."}</Text>
+        </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.panelTitle}>Pareeksha Output</Text>
+          <Text style={styles.blockResult}>{crossExamResult || "Cross-exam practice appears here."}</Text>
+        </View>
+
+        <View style={styles.quickGrid}>
+          <Pressable style={styles.quickCard} onPress={() => navigation.navigate("CaptureMethod")}> 
+            <Text style={styles.quickTitle}>Capture</Text>
+            <Text style={styles.quickDesc}>Write, voice, draw, upload</Text>
+          </Pressable>
+          <Pressable style={styles.quickCard} onPress={() => navigation.navigate("Docs")}> 
+            <Text style={styles.quickTitle}>Docs</Text>
+            <Text style={styles.quickDesc}>Summaries and exports</Text>
+          </Pressable>
+        </View>
+
+        {!!working && (
           <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={styles.loadingText}>Loading website workspace...</Text>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={styles.loadingText}>Processing {working}...</Text>
           </View>
         )}
-        <WebView
-          ref={webRef}
-          source={{ uri: activeUrl }}
-          onLoadStart={() => setLoading(true)}
-          onLoadEnd={() => setLoading(false)}
-          javaScriptEnabled
-          domStorageEnabled
-          sharedCookiesEnabled
-          startInLoadingState
-        />
-      </View>
+      </ScrollView>
 
       <BottomNav current="WebWorkspace" onNavigate={(route) => navigation.navigate(route as any)} />
     </SafeAreaView>
@@ -78,54 +175,105 @@ export function WorkspaceWebScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 12, paddingTop: 10 },
-  topBar: { marginBottom: 8 },
-  title: { color: colors.ink, fontSize: 24, fontWeight: "800" },
-  sub: { color: colors.mutedInk, fontSize: 12, marginTop: 2 },
-  controls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
+  container: { flex: 1, backgroundColor: "#E9EEF7", paddingHorizontal: 14, paddingTop: 10 },
+  scroll: { gap: 12, paddingBottom: 124 },
+  hero: {
+    backgroundColor: "#102A44",
+    borderRadius: 24,
+    padding: 18,
   },
-  input: {
-    flex: 1,
+  kicker: {
+    color: "#92B7DA",
+    fontSize: 12,
+    letterSpacing: 1,
+    fontWeight: "800",
+  },
+  title: {
+    color: "#EFF6FF",
+    fontSize: 30,
+    lineHeight: 35,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+  sub: {
+    color: "#D6E3F1",
+    fontSize: 13,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  panel: {
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: 18,
+    padding: 14,
+    gap: 10,
+  },
+  panelTitle: { color: colors.ink, fontSize: 17, fontWeight: "800" },
+  input: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#DDE6F3",
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: colors.ink,
   },
-  btnPrimary: {
+  textArea: {
+    minHeight: 108,
+  },
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  primary: {
     backgroundColor: colors.accent,
-    borderRadius: 10,
+    borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  btnPrimaryText: { color: colors.white, fontWeight: "700", fontSize: 12 },
-  btnGhost: {
-    backgroundColor: colors.white,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  btnGhostText: { color: colors.ink, fontWeight: "700", fontSize: 12 },
-  webWrap: {
-    flex: 1,
-    overflow: "hidden",
-    borderRadius: 16,
-    backgroundColor: colors.white,
-  },
-  loadingOverlay: {
-    position: "absolute",
-    zIndex: 1,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    paddingVertical: 11,
     alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.75)",
+  },
+  primaryText: { color: colors.white, fontWeight: "700", fontSize: 12 },
+  secondary: {
+    backgroundColor: "#EDF2FF",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  secondaryText: { color: "#2A4597", fontWeight: "700", fontSize: 12 },
+  inlineResult: {
+    color: "#335B88",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  blockResult: {
+    backgroundColor: "#F5F8FD",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E6EDFA",
+    padding: 10,
+    color: colors.mutedInk,
+    fontSize: 13,
+    lineHeight: 18,
+    minHeight: 64,
+  },
+  quickGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  quickCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 12,
+  },
+  quickTitle: { color: colors.ink, fontWeight: "800", fontSize: 15 },
+  quickDesc: { color: colors.mutedInk, fontSize: 12, marginTop: 3 },
+  loadingOverlay: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     gap: 8,
   },
   loadingText: { color: colors.mutedInk, fontSize: 12, fontWeight: "600" },

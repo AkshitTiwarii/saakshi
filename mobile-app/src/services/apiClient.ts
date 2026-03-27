@@ -1,21 +1,127 @@
 import { Platform } from "react-native";
 
 const BASE_URL = Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
+const REQUEST_TIMEOUT_MS = 12000;
+
+export type ReportExportAudience = "victim" | "officer";
+
+export type WarRoomIntelligenceResult = {
+  provider: string;
+  caseId: string;
+  summary: string;
+  readinessScore: number;
+  legalSuggestions: Array<{ code: string; title: string; why: string }>;
+  contradictionRisks: Array<{ level: "LOW" | "MEDIUM" | "HIGH"; title: string; detail: string }>;
+  fakeVictimAssessment: {
+    probability: number;
+    band: "LOW" | "MEDIUM" | "HIGH";
+    flags: string[];
+  };
+};
+
+export type EvidenceAutoDiscoverResult = {
+  caseId: string;
+  autoQuery: string;
+  leads: Array<{ type: string; source: string; query: string; confidence: number }>;
+  clueGraph: { memoryNodes: number; evidenceLeads: number };
+};
+
+export type FakeVictimAssessmentResult = {
+  caseId: string;
+  assessment: {
+    probability: number;
+    band: "LOW" | "MEDIUM" | "HIGH";
+    flags: string[];
+  };
+};
+
+export type ReportExportResult = {
+  reportId: string;
+  downloadUrl: string;
+  reportHash: string;
+  artifactHashes: {
+    profileHash: string;
+    fragmentsHash: string;
+    legalHash: string;
+    evidenceHash: string;
+  };
+  verificationBlock: {
+    chainLength: number;
+    latestIntegrityHash: string;
+    integrityRootHash: string;
+    reportHash: string;
+  };
+};
+
+export type LegalPredictionResult = {
+  caseId: string;
+  provider: string;
+  summary: string;
+  confidence: number;
+  suggestions: Array<{ code: string; title: string }>;
+  rawText?: string;
+};
+
+export type TemporalNormalizationResult = {
+  startDate: string;
+  endDate: string;
+  confidence: number;
+  rationale: string;
+};
+
+export type TraumaAssessmentResult = {
+  framework: string;
+  band: "LOW" | "MEDIUM" | "HIGH";
+  flags: string[];
+  guidance: string[];
+};
+
+export type DistressCalibrationResult = {
+  provider: string;
+  score: number;
+  band: "LOW" | "MEDIUM" | "HIGH";
+  recommendedPace: string;
+};
+
+type VictimSession = {
+  victimUniqueId: string;
+  caseId: string;
+  caseNumber: string;
+  email?: string;
+  displayName?: string;
+  lastProvisionedAt?: string;
+};
+
+let victimSession: VictimSession | null = null;
 
 const DEFAULT_HEADERS = {
   "Content-Type": "application/json",
-  "x-user-id": "demo-survivor-1",
+  "x-user-id": "mobile-user",
   "x-user-role": "survivor",
 };
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      ...DEFAULT_HEADERS,
-      ...(options.headers || {}),
-    },
-  });
+async function request<T>(path: string, options: RequestInit = {}, timeoutMs: number = REQUEST_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        ...DEFAULT_HEADERS,
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Server timed out. Please try again.");
+    }
+    throw error;
+  }
+  clearTimeout(timeoutId);
 
   if (!response.ok) {
     const errJson = await response.json().catch(() => ({}));
@@ -35,6 +141,141 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export function getHealth() {
   return request<{ status: string }>("/api/health");
+}
+
+export function setVictimSession(session: VictimSession) {
+  victimSession = session;
+}
+
+export function getVictimSession() {
+  return victimSession;
+}
+
+export type VoiceAssistantMode = "neutral" | "strict" | "supportive_lawyer";
+
+export async function registerVictimFromGoogle(params: {
+  victimUniqueId: string;
+  email: string;
+  displayName?: string;
+}) {
+  return registerVictimFromIdentity(params);
+}
+
+export async function registerVictimFromIdentity(params: {
+  victimUniqueId: string;
+  email?: string;
+  displayName?: string;
+}) {
+  if (!params.victimUniqueId.trim()) {
+    throw new Error("victimUniqueId is required for case provisioning");
+  }
+
+  const buildLocalFallback = () => {
+    const seed = params.victimUniqueId.replace(/[^a-zA-Z0-9]/g, "").slice(-12) || "LOCAL";
+    const compact = seed.toUpperCase();
+    const caseId = `local-case-${compact}`;
+    const caseNumber = `SAAK-${new Date().getFullYear()}-LOCAL-${compact.slice(0, 5)}`;
+
+    const result = {
+      isNew: false,
+      caseAssignment: {
+        caseId,
+        caseNumber,
+        victimUniqueId: params.victimUniqueId,
+      },
+    };
+
+    setVictimSession({
+      victimUniqueId: params.victimUniqueId,
+      caseId,
+      caseNumber,
+      displayName: params.displayName,
+      email: params.email,
+      lastProvisionedAt: new Date().toISOString(),
+    });
+
+    return result;
+  };
+
+  if (!params.email) {
+    try {
+      const result = await request<{
+        isNew: boolean;
+        caseAssignment: { caseId: string; caseNumber: string; victimUniqueId: string };
+      }>("/api/victim/register-or-login", {
+        method: "POST",
+        body: JSON.stringify({ victimUniqueId: params.victimUniqueId }),
+      });
+
+      setVictimSession({
+        victimUniqueId: result.caseAssignment.victimUniqueId,
+        caseId: result.caseAssignment.caseId,
+        caseNumber: result.caseAssignment.caseNumber,
+        displayName: params.displayName,
+        email: params.email,
+        lastProvisionedAt: new Date().toISOString(),
+      });
+
+      return result;
+    } catch {
+      return buildLocalFallback();
+    }
+  }
+
+  try {
+    const result = await request<{
+      isNew: boolean;
+      caseAssignment: { caseId: string; caseNumber: string; victimUniqueId: string };
+    }>("/api/victim/google-register", {
+      method: "POST",
+      body: JSON.stringify({
+        victimUniqueId: params.victimUniqueId,
+        email: params.email,
+        displayName: params.displayName,
+      }),
+    });
+
+    setVictimSession({
+      victimUniqueId: result.caseAssignment.victimUniqueId,
+      caseId: result.caseAssignment.caseId,
+      caseNumber: result.caseAssignment.caseNumber,
+      displayName: params.displayName,
+      email: params.email,
+      lastProvisionedAt: new Date().toISOString(),
+    });
+    return result;
+  } catch {
+    return buildLocalFallback();
+  }
+}
+
+export function saveVictimDetails(payload: {
+  profile: {
+    email?: string;
+    displayName?: string;
+    phone?: string;
+    emergencyContact?: string;
+    incidentSummary?: string;
+  };
+  fragments?: string[];
+  source?: string;
+}) {
+  if (!victimSession) {
+    throw new Error("Victim session not initialized. Complete Google onboarding first.");
+  }
+  return request<{
+    success: boolean;
+    integrity: { latestHash: string; profileHash: string; previousHash: string };
+  }>("/api/victim/save-details", {
+    method: "POST",
+    body: JSON.stringify({
+      caseId: victimSession.caseId,
+      victimUniqueId: victimSession.victimUniqueId,
+      profile: payload.profile,
+      fragments: payload.fragments || [],
+      source: payload.source || "mobile-app",
+    }),
+  });
 }
 
 export function getConsentPolicies() {
@@ -71,6 +312,60 @@ export function classifyFragment(caseId: string, content: string) {
   }));
 }
 
+export function classifyFragmentForCurrentCase(content: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return classifyFragment(caseId, content);
+}
+
+export function analyzeVoiceWithGoogleNlp(content: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<{
+    provider: string;
+    sentiment: { score: number; magnitude: number; label: string };
+    entities: Array<{ name: string; type: string; salience: number }>;
+    clues: { time: string[]; location: string[]; people: string[] };
+  }>("/api/nlp/google-analyze", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ caseId, text: content }),
+  }, 15000).catch(() => ({
+    provider: "local-fallback",
+    sentiment: { score: 0, magnitude: 0, label: "mixed" },
+    entities: [],
+    clues: { time: [], location: [], people: [] },
+  }));
+}
+
+export function transcribeAudioForCurrentCase(params: {
+  audioBase64: string;
+  mimeType: string;
+  languageCode?: string;
+}) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<{
+    provider: string;
+    transcript: string;
+    confidence: number;
+  }>("/api/voice/transcribe", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({
+      caseId,
+      audioBase64: params.audioBase64,
+      mimeType: params.mimeType,
+      languageCode: params.languageCode || "en-IN",
+    }),
+  }, 25000).catch(() => ({
+    provider: "local-fallback",
+    transcript: "",
+    confidence: 0,
+  }));
+}
+
 export function searchEvidence(caseId: string, query: string) {
   return request<{ text: string }>("/api/ai/search-evidence", {
     method: "POST",
@@ -80,6 +375,163 @@ export function searchEvidence(caseId: string, query: string) {
     body: JSON.stringify({ caseId, query }),
   }).catch(() => ({
     text: "Evidence search is temporarily in local mode. You can continue capturing fragments.",
+  }));
+}
+
+export function searchEvidenceForCurrentCase(query: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return searchEvidence(caseId, query);
+}
+
+export function generateWarRoomIntelligenceForCurrentCase() {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<WarRoomIntelligenceResult>("/api/ai/war-room-intelligence", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ caseId }),
+  }).catch(() => ({
+    provider: "local-fallback",
+    caseId,
+    summary: "Server intelligence is unavailable. Continue collecting precise fragments.",
+    readinessScore: 58,
+    legalSuggestions: [],
+    contradictionRisks: [],
+    fakeVictimAssessment: {
+      probability: 0.22,
+      band: "LOW",
+      flags: ["Fallback estimate only"],
+    },
+  }));
+}
+
+export function autoDiscoverEvidenceForCurrentCase(queryHint: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<EvidenceAutoDiscoverResult>("/api/evidence/auto-discover", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ caseId, queryHint }),
+  }).catch(() => ({
+    caseId,
+    autoQuery: queryHint,
+    leads: [],
+    clueGraph: { memoryNodes: 0, evidenceLeads: 0 },
+  }));
+}
+
+export function getFakeVictimAssessmentForCurrentCase() {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<FakeVictimAssessmentResult>("/api/risk/fake-victim-assessment", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ caseId }),
+  }).catch(() => ({
+    caseId,
+    assessment: {
+      probability: 0.2,
+      band: "LOW",
+      flags: ["Fallback estimate only"],
+    },
+  }));
+}
+
+export function exportCaseReportForCurrentCase(params?: { audience?: ReportExportAudience; officerId?: string }) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  const audience = params?.audience || "victim";
+  const officerId = params?.officerId;
+  const victimUniqueId = victimSession?.victimUniqueId || "";
+
+  return request<ReportExportResult>("/api/report/export", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+      "x-user-role": audience === "officer" ? "officer" : DEFAULT_HEADERS["x-user-role"],
+      "x-user-id": audience === "officer" ? officerId || "officer-user" : DEFAULT_HEADERS["x-user-id"],
+    },
+    body: JSON.stringify({
+      caseId,
+      audience,
+      officerId,
+      victimUniqueId,
+    }),
+  }).then((result) => ({
+    ...result,
+    downloadUrl: `${BASE_URL}${result.downloadUrl}`,
+  }));
+}
+
+export function predictLegalForCurrentCase(text: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<LegalPredictionResult>("/api/ml/legal-predict", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ caseId, text }),
+  }).catch(() => ({
+    caseId,
+    provider: "local-fallback",
+    summary: "Model unavailable. Continue with current legal suggestions.",
+    confidence: 0.35,
+    suggestions: [],
+  }));
+}
+
+export function normalizeTemporalPhraseForCurrentCase(phrase: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<TemporalNormalizationResult>("/api/ml/temporal-normalize", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ phrase }),
+  }).catch(() => ({
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+    confidence: 0.25,
+    rationale: "Fallback date because temporal model is unavailable.",
+  }));
+}
+
+export function assessTraumaForCurrentCase(text: string) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<TraumaAssessmentResult>("/api/ml/trauma-assess", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ text }),
+  }).catch(() => ({
+    framework: "local-fallback",
+    band: "MEDIUM",
+    flags: ["Model unavailable"],
+    guidance: ["Use short prompts and avoid forcing exact chronology."],
+  }));
+}
+
+export function calibrateDistressForCurrentCase(params: {
+  transcript: string;
+  pauseRate?: number;
+  speechRate?: number;
+  silenceRatio?: number;
+}) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<DistressCalibrationResult>("/api/ml/distress-calibrate", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify(params),
+  }).catch(() => ({
+    provider: "local-fallback",
+    score: 0.3,
+    band: "LOW",
+    recommendedPace: "normal",
   }));
 }
 
@@ -126,4 +578,56 @@ export function generateCrossExamination(caseId: string, fragments: Array<{ cont
     coaching: "Answer in short factual lines. It is okay to say you do not remember exact sequence.",
     threatType: "timeline pressure",
   }));
+}
+
+export async function persistVoiceChatMessage(params: {
+  role: "user" | "assistant";
+  mode: VoiceAssistantMode;
+  text: string;
+}) {
+  if (!params.text.trim()) return;
+  try {
+    await saveVictimDetails({
+      profile: {},
+      fragments: [`[voice-chat][${params.mode}][${params.role}] ${params.text.trim()}`],
+      source: "mobile-voice-assistant",
+    });
+  } catch {
+    // Keep chat usable even if persistence endpoint is unavailable.
+  }
+}
+
+export async function generateModeAwareCoachReply(params: {
+  mode: VoiceAssistantMode;
+  text: string;
+  caseId?: string;
+}) {
+  const caseId = params.caseId || victimSession?.caseId || "demo-case-001";
+  const transcript = params.text.trim();
+  if (!transcript) {
+    return "Please share one concrete detail, and I will help you strengthen it.";
+  }
+
+  if (params.mode === "strict") {
+    const result = await generateCrossExamination(caseId, [{ content: transcript }]);
+    return `${result.question}\n\nCoaching: ${result.coaching}`;
+  }
+
+  if (params.mode === "supportive_lawyer") {
+    const analysis = await generateAdversarialAnalysis(caseId, [{ content: transcript }]);
+    const topRisk = analysis.virodhi?.[0];
+    const topDefense = analysis.raksha?.[0];
+    return [
+      `I am with you. Current strength score is ${analysis.strengthScore}.`,
+      topRisk ? `Main pressure point: ${topRisk.title} - ${topRisk.description}` : "No high-pressure challenge detected yet.",
+      topDefense ? `Best next move: ${topDefense.title} - ${topDefense.description}` : "Next move: add one precise time clue and one location clue.",
+    ].join("\n\n");
+  }
+
+  const signal = await classifyFragment(caseId, transcript);
+  return [
+    "Thanks, I captured your note.",
+    [signal.emotion, signal.time, signal.location].filter(Boolean).join(" • ") ||
+      "I recommend adding a sensory detail and approximate timeline anchor.",
+  ].join("\n\n");
 }

@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { RootStackParamList } from "../../App";
 import { colors } from "../theme/colors";
-import { classifyFragment } from "../services/apiClient";
 import { BottomNav } from "../components/BottomNav";
 
 type Props = NativeStackScreenProps<RootStackParamList, "CaptureMethod">;
@@ -18,61 +17,59 @@ const methods = [
 export function CaptureMethodScreen({ route, navigation }: Props) {
   const mood = route.params?.mood || "unknown";
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [apiResult, setApiResult] = useState<string>("");
+  const [apiResult, setApiResult] = useState<string>("Pick any method. You can switch between methods anytime.");
 
-  const handleMethodPress = async (methodId: string) => {
-    try {
-      setBusyId(methodId);
-      const result = await classifyFragment("demo-case-001", `User selected ${methodId} while mood=${mood}`);
-      const summary = [result.emotion, result.time, result.location].filter(Boolean).join(" • ");
-      setApiResult(summary ? `AI connected: ${summary}` : "AI connected and processed.");
+  const handleMethodPress = (methodId: string) => {
+    setBusyId(methodId);
+    setApiResult("Opening your selected capture workspace...");
 
-      if (methodId === "write") navigation.navigate("CaptureWrite", { mood });
-      if (methodId === "speak") navigation.navigate("CaptureVoice", { mood });
-      if (methodId === "draw") navigation.navigate("CaptureDraw", { mood });
-      if (methodId === "upload") navigation.navigate("CaptureUpload", { mood });
-    } catch (error) {
-      setApiResult("AI endpoint unavailable (local mode). You can still continue.");
+    if (methodId === "write") navigation.navigate("CaptureWrite", { mood });
+    if (methodId === "speak") navigation.navigate("CaptureVoice", { mood });
+    if (methodId === "draw") navigation.navigate("CaptureDraw", { mood });
+    if (methodId === "upload") navigation.navigate("CaptureUpload", { mood });
 
-      if (methodId === "write") navigation.navigate("CaptureWrite", { mood });
-      if (methodId === "speak") navigation.navigate("CaptureVoice", { mood });
-      if (methodId === "draw") navigation.navigate("CaptureDraw", { mood });
-      if (methodId === "upload") navigation.navigate("CaptureUpload", { mood });
-    } finally {
-      setBusyId(null);
-    }
+    setTimeout(() => setBusyId(null), 250);
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.kicker}>Mood context: {mood}</Text>
-        <Text style={styles.title}>Choose one way to begin.</Text>
-        <Text style={styles.subtitle}>No timeline. No pressure. One memory at a time.</Text>
-      </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.header}>
+          <Text style={styles.kicker}>Mood context: {mood}</Text>
+          <Text style={styles.title}>Choose one way to begin.</Text>
+          <Text style={styles.subtitle}>No timeline. No pressure. One memory at a time.</Text>
+        </View>
 
-      <View style={styles.list}>
-        {methods.map((method) => (
-          <Pressable key={method.id} style={styles.card} onPress={() => handleMethodPress(method.id)}>
-            <View>
-              <Text style={styles.cardTitle}>{busyId === method.id ? "Connecting..." : method.label}</Text>
-              <Text style={styles.cardHint}>{method.hint}</Text>
-            </View>
-            <Text style={styles.arrow}>›</Text>
-          </Pressable>
-        ))}
-      </View>
+        <View style={styles.flowCard}>
+          <Text style={styles.flowTitle}>Capture Flow</Text>
+          <Text style={styles.flowLine}>1. Choose method</Text>
+          <Text style={styles.flowLine}>2. Add memory details</Text>
+          <Text style={styles.flowLine}>3. AI extracts clues for timeline and evidence</Text>
+        </View>
 
-      {!!apiResult && <Text style={styles.apiResult}>{apiResult}</Text>}
+        <View style={styles.list}>
+          {methods.map((method) => (
+            <Pressable key={method.id} style={styles.card} onPress={() => handleMethodPress(method.id)}>
+              <View>
+                <Text style={styles.cardTitle}>{busyId === method.id ? "Opening..." : method.label}</Text>
+                <Text style={styles.cardHint}>{method.hint}</Text>
+              </View>
+              <Text style={styles.arrow}>›</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {!!apiResult && <Text style={styles.apiResult}>{apiResult}</Text>}
+
+        <Pressable style={styles.quickExit} onPress={() => navigation.navigate("QuickExit")}>
+          <Text style={styles.quickExitText}>Quick Exit</Text>
+        </Pressable>
+      </ScrollView>
 
       <BottomNav
         current="CaptureMethod"
         onNavigate={(route) => navigation.navigate(route as any)}
       />
-
-      <Pressable style={styles.quickExit} onPress={() => navigation.navigate("QuickExit")}>
-        <Text style={styles.quickExitText}>Quick Exit</Text>
-      </Pressable>
     </SafeAreaView>
   );
 }
@@ -83,10 +80,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.fog,
     paddingHorizontal: 24,
     paddingTop: 24,
-    justifyContent: "space-between",
+  },
+  scroll: {
+    paddingBottom: 124,
+    gap: 14,
   },
   header: {
-    marginTop: 28,
+    marginTop: 24,
     gap: 10,
   },
   kicker: {
@@ -106,6 +106,22 @@ const styles = StyleSheet.create({
     color: colors.mutedInk,
     fontSize: 15,
     lineHeight: 22,
+  },
+  flowCard: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    padding: 14,
+    gap: 4,
+  },
+  flowTitle: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  flowLine: {
+    color: colors.mutedInk,
+    fontSize: 12,
+    lineHeight: 18,
   },
   list: {
     gap: 14,
@@ -135,8 +151,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   quickExit: {
-    paddingVertical: 18,
-    marginBottom: 24,
+    paddingVertical: 8,
+    marginBottom: 8,
   },
   quickExitText: {
     color: colors.mutedInk,
@@ -145,8 +161,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   apiResult: {
-    marginTop: 6,
-    marginBottom: 4,
+    marginTop: 4,
     color: colors.mutedInk,
     fontSize: 13,
     lineHeight: 20,

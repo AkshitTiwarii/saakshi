@@ -3,7 +3,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { RootStackParamList } from "../../App";
 import { colors } from "../theme/colors";
-import { evaluateConsentForAnalysis } from "../services/apiClient";
+import { evaluateConsentForAnalysis, getVictimSession } from "../services/apiClient";
 import { BottomNav } from "../components/BottomNav";
 
 type Props = NativeStackScreenProps<RootStackParamList, "EmotionalCheckIn">;
@@ -23,7 +23,7 @@ export function EmotionalCheckInScreen({ navigation }: Props) {
     try {
       setErrorText("");
       setLoadingMood(moodKey);
-      const caseId = "demo-case-001";
+      const caseId = getVictimSession()?.caseId || "demo-case-001";
       const result = await evaluateConsentForAnalysis(caseId);
       if (!result.allowed) setErrorText(`Consent note: ${result.reason}`);
       navigation.navigate("CaptureMethod", { mood: moodKey });

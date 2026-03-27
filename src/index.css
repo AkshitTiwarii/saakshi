@@ -53,3 +53,10 @@
   background: radial-gradient(circle at 50% 50%, #fbf8ff 0%, #f1f3fa 100%);
 }
 
+.officer-portal-bg {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.2) 0%, rgba(56, 189, 248, 0) 35%),
+    radial-gradient(circle at 85% 10%, rgba(20, 184, 166, 0.16) 0%, rgba(20, 184, 166, 0) 35%),
+    linear-gradient(160deg, #eef6ff 0%, #f8fbff 45%, #f3f7ff 100%);
+}
+

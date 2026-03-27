@@ -6,11 +6,16 @@ interface PrimaryButtonProps {
   label: string;
   onPress: () => void;
   style?: ViewStyle;
+  disabled?: boolean;
 }
 
-export function PrimaryButton({ label, onPress, style }: PrimaryButtonProps) {
+export function PrimaryButton({ label, onPress, style, disabled = false }: PrimaryButtonProps) {
   return (
-    <Pressable style={[styles.button, style]} onPress={onPress}>
+    <Pressable
+      style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
@@ -28,6 +33,9 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.55,
   },
   label: {
     color: colors.white,

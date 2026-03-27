@@ -1,13 +1,15 @@
 import React from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { useAuth } from "@clerk/clerk-expo";
 import { RootStackParamList } from "../../App";
 import { colors } from "../theme/colors";
-import { BottomNav } from "../components/BottomNav";
 
 type Props = NativeStackScreenProps<RootStackParamList, "QuickExit">;
 
 export function QuickExitScreen({ navigation }: Props) {
+  const { isSignedIn } = useAuth();
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.panel}>
@@ -20,14 +22,12 @@ export function QuickExitScreen({ navigation }: Props) {
 - Phone charger</Text>
       </View>
 
-      <Pressable style={styles.back} onPress={() => navigation.replace("Dashboard")}> 
+      <Pressable
+        style={styles.back}
+        onPress={() => navigation.replace(isSignedIn ? "Dashboard" : "SafeEntry")}
+      > 
         <Text style={styles.backText}>Return to Saakshi</Text>
       </Pressable>
-
-      <BottomNav
-        current="QuickExit"
-        onNavigate={(route) => navigation.navigate(route as any)}
-      />
     </SafeAreaView>
   );
 }

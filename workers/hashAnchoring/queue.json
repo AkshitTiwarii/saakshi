@@ -1,0 +1,18 @@
+[
+  {
+    "caseId": "e7bb73e3-15d1-460c-91e4-4b8ee5091958",
+    "uploaderId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "consentVersion": "consent-v1",
+    "blobHash": "468b72b02305469058589812ced3a2b4ea0b82d9926b83f5592b02096d088fd5",
+    "metadataHash": "eed6365baf61217a16d381facc6cadf6f7967e67bd28c0cdb21f5ab9c6486f62",
+    "createdAt": "2026-03-27T17:15:03.248Z"
+  },
+  {
+    "caseId": "81a4aad8-e260-4b32-bef0-784c5023f3d5",
+    "uploaderId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "consentVersion": "consent-v1",
+    "blobHash": "c553e775b1c33060eadb591ca64002be2334d47c6b13af19bf1d27176a11d186",
+    "metadataHash": "eed6365baf61217a16d381facc6cadf6f7967e67bd28c0cdb21f5ab9c6486f62",
+    "createdAt": "2026-03-27T21:04:08.231Z"
+  }
+]

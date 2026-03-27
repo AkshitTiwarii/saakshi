@@ -71,3 +71,31 @@ Run:
 The frontend now calls backend endpoints under `/api/ai/*`, and the backend handles Gemini access.
 
 For Android emulator mobile API calls, use host `10.0.2.2` for local backend access.
+
+## Officer Dashboard Testing
+
+The website now opens directly to the officer dashboard at `/`.
+
+### 1. Ensure Firestore database exists
+
+If you see Firestore `NOT_FOUND` errors, create a Firestore database in project `mospi-469523` first, then re-run the app.
+
+### 2. Seed local consent grants for dashboard checks
+
+Local backend grant store is pre-seeded in:
+
+- `backend/consent/consent-grants.json`
+
+### 3. Seed Firestore case data (optional helper script)
+
+Run:
+
+- `npm run seed:officer-data`
+
+### 4. Testing credentials
+
+- Case Number: `SAAK-2026-1042`
+- Victim UID: `VIC-AX74-1192`
+- Officer IDs: `OFF-IND-221`, `OFF-IND-331`, `ADV-LEGAL-72`
+
+Use matching role and purpose combinations in the officer dashboard.

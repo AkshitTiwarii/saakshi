@@ -3,6 +3,7 @@
   "appId": "1:952379868525:web:8508651370d9fef9f88664",
   "apiKey": "AIzaSyCTBOfGeDOGbH16lQofZ4yjM5DOpv3vBXk",
   "authDomain": "mospi-469523.firebaseapp.com",
+  "databaseURL": "https://mospi-469523-default-rtdb.asia-southeast1.firebasedatabase.app",
   "firestoreDatabaseId": "ai-studio-5e4fc0fd-d360-4d78-a255-fcddfc908559",
   "storageBucket": "mospi-469523.firebasestorage.app",
   "messagingSenderId": "952379868525",
