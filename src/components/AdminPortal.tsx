@@ -17,6 +17,15 @@ type AdminCase = {
   isAssigned: boolean;
   fragmentCount: number;
   victimProfileUpdatedAt: string | null;
+  victimDisplayName: string | null;
+  victimEmail: string | null;
+  victimPhone: string | null;
+  emergencyContact: string | null;
+  incidentSummary: string | null;
+  latestFragmentPreview: string | null;
+  latestIntegrityHash: string | null;
+  integrityEntryCount: number;
+  lastUpdateSource: string | null;
   assignedTo: AssignedOfficer[];
 };
 
@@ -51,6 +60,9 @@ export function AdminPortal() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [newVictimUniqueId, setNewVictimUniqueId] = useState('');
+  const [newVictimEmail, setNewVictimEmail] = useState('');
+  const [newVictimDisplayName, setNewVictimDisplayName] = useState('');
 
   useEffect(() => {
     const cached = window.sessionStorage.getItem('saakshi_admin_token') || '';
@@ -95,6 +107,14 @@ export function AdminPortal() {
     loadOverview();
   }, [adminToken]);
 
+  useEffect(() => {
+    if (!adminToken) return;
+    const id = window.setInterval(() => {
+      loadOverview();
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [adminToken]);
+
   const loginAdmin = async () => {
     setBusy(true);
     setError('');
@@ -130,6 +150,41 @@ export function AdminPortal() {
     setOverview(null);
     setSelectedCaseId('');
     setNotice('Signed out');
+  };
+
+  const createCase = async () => {
+    if (!newVictimUniqueId.trim()) {
+      setError('Victim unique ID is required to create a case.');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const data = (await apiJson('/api/admin/create-case', {
+        method: 'POST',
+        body: JSON.stringify({
+          victimUniqueId: newVictimUniqueId.trim(),
+          email: newVictimEmail.trim() || undefined,
+          displayName: newVictimDisplayName.trim() || undefined,
+        }),
+      })) as {
+        caseAssignment?: { caseId: string; caseNumber: string };
+        isNew: boolean;
+        message?: string;
+      };
+
+      if (data.caseAssignment?.caseId) {
+        setSelectedCaseId(data.caseAssignment.caseId);
+      }
+      setNotice(data.message || (data.isNew ? 'Case created.' : 'Case already existed.'));
+      await loadOverview();
+    } catch (e: any) {
+      setError(e.message || 'Failed to create case');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const selectedCase = useMemo(
@@ -263,6 +318,40 @@ export function AdminPortal() {
           </div>
         )}
 
+        {adminToken && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+            <h2 className="text-xl font-bold text-slate-900">Create Case (Admin Bootstrap)</h2>
+            <p className="text-sm text-slate-600">Use this when victim onboarding has not yet created a backend case entry.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                value={newVictimUniqueId}
+                onChange={(e) => setNewVictimUniqueId(e.target.value)}
+                placeholder="Victim unique ID"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300"
+              />
+              <input
+                value={newVictimEmail}
+                onChange={(e) => setNewVictimEmail(e.target.value)}
+                placeholder="Email (optional)"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300"
+              />
+              <input
+                value={newVictimDisplayName}
+                onChange={(e) => setNewVictimDisplayName(e.target.value)}
+                placeholder="Display name (optional)"
+                className="w-full px-4 py-2 rounded-lg border border-slate-300"
+              />
+            </div>
+            <button
+              onClick={createCase}
+              disabled={busy || !newVictimUniqueId.trim()}
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold disabled:opacity-50"
+            >
+              {busy ? 'Working...' : 'Create Case'}
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between">
@@ -290,9 +379,24 @@ export function AdminPortal() {
                     </span>
                   </div>
                   <div className="text-sm text-slate-700 mt-1">Victim: {caseItem.victimUniqueId}</div>
+                  <div className="text-xs text-slate-600">Name: {caseItem.victimDisplayName || 'Not provided'}</div>
+                  <div className="text-xs text-slate-600">Email: {caseItem.victimEmail || 'Not provided'}</div>
+                  <div className="text-xs text-slate-600">Phone: {caseItem.victimPhone || 'Not provided'}</div>
+                  <div className="text-xs text-slate-600">Emergency: {caseItem.emergencyContact || 'Not provided'}</div>
                   <div className="text-xs text-slate-500 mt-1">Created: {new Date(caseItem.createdAt).toLocaleString()}</div>
                   <div className="text-xs text-slate-500">Profile Updated: {caseItem.victimProfileUpdatedAt ? new Date(caseItem.victimProfileUpdatedAt).toLocaleString() : 'Not updated yet'}</div>
                   <div className="text-xs text-slate-500">Fragments: {caseItem.fragmentCount}</div>
+                  <div className="text-xs text-slate-500">Integrity entries: {caseItem.integrityEntryCount}</div>
+                  <div className="text-xs text-slate-500">Last source: {caseItem.lastUpdateSource || 'unknown'}</div>
+                  {caseItem.latestIntegrityHash && (
+                    <div className="text-[10px] text-slate-500 break-all">Hash: {caseItem.latestIntegrityHash}</div>
+                  )}
+                  {caseItem.latestFragmentPreview && (
+                    <div className="text-xs text-slate-600 mt-1 italic">"{caseItem.latestFragmentPreview}"</div>
+                  )}
+                  {caseItem.incidentSummary && (
+                    <div className="text-xs text-slate-700 mt-1">Summary: {caseItem.incidentSummary}</div>
+                  )}
                 </button>
               ))}
               {adminToken && (overview?.cases || []).length === 0 && (

@@ -13,6 +13,7 @@ import {
   SignInButton,
   SignUpButton,
   UserButton,
+  useUser,
 } from '@clerk/clerk-react';
 import { 
   Shield, 
@@ -43,32 +44,15 @@ import {
   PenTool,
   LayoutGrid
 } from 'lucide-react';
-import { 
-  auth, 
-  db 
-} from './firebase';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signInWithRedirect,
-  getRedirectResult,
-  GoogleAuthProvider, 
-  signOut 
-} from 'firebase/auth';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  addDoc, 
-  Timestamp, 
-  doc, 
-  setDoc, 
-  getDoc 
-} from 'firebase/firestore';
 import { EMOTIONS, CAPTURE_METHODS } from './constants';
-import { Fragment, Evidence, Case, UserProfile } from './types';
+import { Fragment, Evidence, Case } from './types';
 import { classifyFragment, generateAdversarialAnalysis } from './services/geminiService.ts';
+import {
+  getVictimCaseOverview,
+  resolveCanonicalVictimIdentity,
+  saveVictimWebCapture,
+  type VictimCaseOverview,
+} from './services/canonicalCaseClient';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { KhojakSeeker } from './components/KhojakSeeker';
 import { Pareeksha } from './components/Pareeksha';
@@ -81,6 +65,21 @@ import { SuccessFeedback } from './components/SuccessFeedback';
 import { OfficerPortalV2 } from './components/OfficerPortalV2';
 import { AdminPortal } from './components/AdminPortal';
 import { OfficerCaseWorkspace } from './components/OfficerCaseWorkspace';
+
+const toOverviewFragments = (overview: VictimCaseOverview): Fragment[] => {
+  const profileUpdatedAt = overview.profile?.updatedAt
+    ? Math.floor(new Date(overview.profile.updatedAt).getTime() / 1000)
+    : Math.floor(Date.now() / 1000);
+
+  return overview.fragments.map((content, index) => ({
+    id: `${overview.caseAssignment.caseId}-fragment-${index}`,
+    uid: overview.caseAssignment.victimUniqueId,
+    type: 'text',
+    content,
+    timestamp: { seconds: profileUpdatedAt } as any,
+    classification: {},
+  }));
+};
 
 // --- Components ---
 
@@ -317,6 +316,7 @@ const CaptureMethod = () => {
 
 const CaptureText = () => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -336,19 +336,26 @@ const CaptureText = () => {
     if (!text.trim()) return;
     setLoading(true);
     try {
+      const identity = resolveCanonicalVictimIdentity({
+        clerkId: user?.id,
+        email: user?.primaryEmailAddress?.emailAddress,
+        displayName: user?.fullName,
+      });
       const result = await classifyFragment(text);
-      await addDoc(collection(db, 'fragments'), {
-        uid: auth.currentUser?.uid,
-        type: 'text',
-        content: text,
-        emotion: result.emotion,
-        timestamp: Timestamp.now(),
-        classification: {
-          time: result.time,
-          location: result.location,
-          sensory: result.sensory
-        },
-        geoTag: locationData
+      const locationSummary = locationData
+        ? `lat:${locationData.lat.toFixed(5)}, lng:${locationData.lng.toFixed(5)}`
+        : 'location-unavailable';
+      await saveVictimWebCapture({
+        victimUniqueId: identity.victimUniqueId,
+        email: identity.email,
+        displayName: identity.displayName,
+        incidentSummary: text,
+        fragments: [
+          `[TEXT] ${text}`,
+          `[TEXT_CLASSIFICATION] ${JSON.stringify(result)}`,
+          `[TEXT_LOCATION] ${locationSummary}`,
+        ],
+        source: 'web-text-capture',
       });
       setClassification(result);
       setLoading(false);
@@ -397,21 +404,35 @@ const CaptureText = () => {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [fragments, setFragments] = useState<Fragment[]>([]);
-  const [caseData, setCaseData] = useState<Case | null>(null);
+  const victimIdentity = resolveCanonicalVictimIdentity({
+    clerkId: user?.id,
+    email: user?.primaryEmailAddress?.emailAddress,
+    displayName: user?.fullName,
+  });
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    const qF = query(collection(db, 'fragments'), where('uid', '==', auth.currentUser.uid));
-    const unsubF = onSnapshot(qF, (snapshot) => {
-      setFragments(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Fragment)));
-    });
-    const qC = query(collection(db, 'cases'), where('uid', '==', auth.currentUser.uid));
-    const unsubC = onSnapshot(qC, (snapshot) => {
-      if (!snapshot.empty) setCaseData({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Case);
-    });
-    return () => { unsubF(); unsubC(); };
-  }, []);
+    let isMounted = true;
+
+    const loadOverview = async () => {
+      try {
+        const overview = await getVictimCaseOverview(victimIdentity.victimUniqueId);
+        if (!isMounted) return;
+        setFragments(toOverviewFragments(overview));
+      } catch (error) {
+        console.error('Failed to load dashboard overview', error);
+      }
+    };
+
+    loadOverview();
+    const interval = window.setInterval(loadOverview, 15000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(interval);
+    };
+  }, [victimIdentity.victimUniqueId]);
 
   const features = [
     { id: 'capture', title: 'Capture', desc: 'Record new fragments', icon: Mic, path: '/capture-method', color: 'bg-primary' },
@@ -491,57 +512,74 @@ const Dashboard = () => {
 
 const WarRoom = () => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [fragments, setFragments] = useState<Fragment[]>([]);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const victimIdentity = resolveCanonicalVictimIdentity({
+    clerkId: user?.id,
+    email: user?.primaryEmailAddress?.emailAddress,
+    displayName: user?.fullName,
+  });
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    let isMounted = true;
 
-    const qFragments = query(collection(db, 'fragments'), where('uid', '==', auth.currentUser.uid));
-    const unsubFragments = onSnapshot(qFragments, (snapshot) => {
-      setFragments(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Fragment)));
-    });
+    const loadOverview = async () => {
+      try {
+        const overview = await getVictimCaseOverview(victimIdentity.victimUniqueId);
+        if (!isMounted) return;
 
-    const qEvidence = query(collection(db, 'evidence'), where('uid', '==', auth.currentUser.uid));
-    const unsubEvidence = onSnapshot(qEvidence, (snapshot) => {
-      setEvidence(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Evidence)));
-    });
-
-    const qCase = query(collection(db, 'cases'), where('uid', '==', auth.currentUser.uid));
-    const unsubCase = onSnapshot(qCase, (snapshot) => {
-      if (!snapshot.empty) {
-        setCaseData({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Case);
+        setFragments(toOverviewFragments(overview));
+        setCaseData((prev) => ({
+          id: overview.caseAssignment.caseId,
+          uid: overview.caseAssignment.victimUniqueId,
+          strengthScore: prev?.strengthScore || 72,
+          adversarialAnalysis: prev?.adversarialAnalysis,
+          createdAt: { seconds: Math.floor(new Date(overview.caseAssignment.createdAt).getTime() / 1000) } as any,
+        }));
+      } catch (error) {
+        console.error('Failed to load war-room overview', error);
       }
-    });
+    };
+
+    loadOverview();
+    const interval = window.setInterval(loadOverview, 15000);
 
     return () => {
-      unsubFragments();
-      unsubEvidence();
-      unsubCase();
+      isMounted = false;
+      window.clearInterval(interval);
     };
-  }, []);
+  }, [victimIdentity.victimUniqueId]);
 
   const handleRecalculate = async () => {
     if (fragments.length === 0) return;
     setIsAnalyzing(true);
     try {
       const analysis = await generateAdversarialAnalysis(fragments, evidence);
-      
-      const caseRef = caseData?.id 
-        ? doc(db, 'cases', caseData.id) 
-        : doc(collection(db, 'cases'));
-        
-      await setDoc(caseRef, {
-        uid: auth.currentUser?.uid,
+      setCaseData((prev) => ({
+        id: prev?.id || caseData?.id,
+        uid: prev?.uid || caseData?.uid || victimIdentity.victimUniqueId,
+        strengthScore: analysis.strengthScore,
         adversarialAnalysis: {
           virodhi: analysis.virodhi,
-          raksha: analysis.raksha
+          raksha: analysis.raksha,
         },
-        strengthScore: analysis.strengthScore,
-        updatedAt: Timestamp.now()
-      }, { merge: true });
+        createdAt: prev?.createdAt || ({ seconds: Math.floor(Date.now() / 1000) } as any),
+      } as Case));
+
+      await saveVictimWebCapture({
+        victimUniqueId: victimIdentity.victimUniqueId,
+        email: victimIdentity.email,
+        displayName: victimIdentity.displayName,
+        fragments: [
+          `[WAR_ROOM_STRENGTH] ${analysis.strengthScore}`,
+          `[WAR_ROOM_VIRODHI] ${JSON.stringify(analysis.virodhi)}`,
+          `[WAR_ROOM_RAKSHA] ${JSON.stringify(analysis.raksha)}`,
+        ],
+        source: 'web-war-room',
+      });
       
     } catch (error) {
       console.error("Analysis failed", error);

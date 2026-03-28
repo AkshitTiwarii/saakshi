@@ -1,0 +1,126 @@
+{
+  "caseAssignments": [
+    {
+      "caseId": "19fc67aa-7bf2-4d7d-8431-2de04ddc7d80",
+      "caseNumber": "SAAK-2026-35310",
+      "victimUniqueId": "web-smoke-user-001",
+      "createdAt": "2026-03-28T18:41:00.155Z",
+      "createdByAdminId": "akshittiwari29@gmail.com"
+    },
+    {
+      "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+      "caseNumber": "SAAK-2026-E57C0",
+      "victimUniqueId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+      "createdAt": "2026-03-28T20:14:44.819Z"
+    }
+  ],
+  "officerDesignations": [
+    {
+      "designationId": "designation-98967f64-ca9c-486f-895f-f198a420fdc7",
+      "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+      "officerId": "OFF-IND-221",
+      "role": "police",
+      "designatedAt": "2026-03-28T20:33:31.427Z",
+      "designatedByActorId": "akshittiwari29@gmail.com",
+      "status": "active",
+      "scope": [
+        "victim_media",
+        "ai_analysis"
+      ]
+    }
+  ],
+  "victimCaseMap": [
+    [
+      "web-smoke-user-001",
+      "19fc67aa-7bf2-4d7d-8431-2de04ddc7d80"
+    ],
+    [
+      "user_3BWOl06HYd53CtcV6NNceFSildJ",
+      "584b6b23-aeb8-4884-86af-38b9367c09ae"
+    ]
+  ],
+  "victimDetailsByCase": [
+    [
+      "19fc67aa-7bf2-4d7d-8431-2de04ddc7d80",
+      {
+        "profile": {
+          "victimUniqueId": "web-smoke-user-001",
+          "email": "web-smoke@example.com",
+          "displayName": "Web Smoke User",
+          "updatedAt": "2026-03-28T18:41:00.155Z"
+        },
+        "fragments": [],
+        "metadata": {
+          "source": "admin-portal",
+          "createdBy": "akshittiwari29@gmail.com"
+        }
+      }
+    ],
+    [
+      "584b6b23-aeb8-4884-86af-38b9367c09ae",
+      {
+        "profile": {
+          "victimUniqueId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "email": "tiwariakshit60@gmail.com",
+          "displayName": "Akshit Tiwari",
+          "updatedAt": "2026-03-28T20:25:11.967Z"
+        },
+        "fragments": [],
+        "metadata": {
+          "authProvider": "google",
+          "onboardingCompleted": false,
+          "lastUpdatedAt": "2026-03-28T20:25:11.967Z",
+          "source": "mobile-settings-export-sync"
+        }
+      }
+    ]
+  ],
+  "caseIntegrityByCase": [
+    [
+      "19fc67aa-7bf2-4d7d-8431-2de04ddc7d80",
+      [
+        {
+          "entryId": "integrity-815bcf0c-843d-41b0-a72e-c77b136b00b0",
+          "caseId": "19fc67aa-7bf2-4d7d-8431-2de04ddc7d80",
+          "prevHash": "GENESIS",
+          "currentHash": "62f86027c42d11127287d459634fee8239c6d3143dd702f72a9581e1c58818b4",
+          "createdAt": "2026-03-28T18:41:00.155Z",
+          "actorId": "akshittiwari29@gmail.com",
+          "payloadType": "victim_profile"
+        }
+      ]
+    ],
+    [
+      "584b6b23-aeb8-4884-86af-38b9367c09ae",
+      [
+        {
+          "entryId": "integrity-f2343509-9b61-465c-8106-432261cceb89",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "GENESIS",
+          "currentHash": "d05212f5cf94f18b8bfe7349b6c7ab48371dda83a6e40e4dc8c72c5b8707c2a5",
+          "createdAt": "2026-03-28T20:14:44.819Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-3579ac15-0a0a-4e78-933b-373f6054bc32",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "d05212f5cf94f18b8bfe7349b6c7ab48371dda83a6e40e4dc8c72c5b8707c2a5",
+          "currentHash": "104f5ddd60fc333cd5f020713312a318261cf3c1773ee854508a22271fcf8f54",
+          "createdAt": "2026-03-28T20:25:11.967Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-0e4f458d-7fed-4479-8a21-3c2a8a8e6c7b",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "104f5ddd60fc333cd5f020713312a318261cf3c1773ee854508a22271fcf8f54",
+          "currentHash": "a3c2d78afd73d0aa88b7bb173fe5e67fea62f50ae492131f8156bcb3a3306d84",
+          "createdAt": "2026-03-28T20:25:11.968Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        }
+      ]
+    ]
+  ]
+}

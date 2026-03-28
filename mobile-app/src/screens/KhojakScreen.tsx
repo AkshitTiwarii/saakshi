@@ -1,10 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { RootStackParamList } from "../../App";
 import { BottomNav } from "../components/BottomNav";
 import { colors } from "../theme/colors";
-import { autoDiscoverEvidenceForCurrentCase, searchEvidenceForCurrentCase, analyzeVoiceWithGoogleNlp } from "../services/apiClient";
+import {
+  analyzeVoiceWithGoogleNlp,
+  autoDiscoverEvidenceForCurrentCase,
+  loadScreenDraft,
+  saveScreenDraft,
+  searchEvidenceForCurrentCase,
+} from "../services/apiClient";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Khojak">;
 
@@ -29,6 +35,20 @@ export function KhojakScreen({ navigation }: Props) {
   });
   const [autoLeads, setAutoLeads] = useState<Array<{ type: string; source: string; query: string; confidence: number }>>([]);
 
+  useEffect(() => {
+    Promise.all([loadScreenDraft("khojak.query"), loadScreenDraft("khojak.result")])
+      .then(([savedQuery, savedResult]) => {
+        if (savedQuery) setQuery(savedQuery);
+        if (savedResult) setResult(savedResult);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const onChangeQuery = (value: string) => {
+    setQuery(value);
+    void saveScreenDraft("khojak.query", value);
+  };
+
   const runSearch = async () => {
     if (!query.trim()) return;
     setLoading(true);
@@ -39,7 +59,9 @@ export function KhojakScreen({ navigation }: Props) {
         autoDiscoverEvidenceForCurrentCase(query),
       ]);
 
-      setResult(`${searchRes.text}\n\nAuto-query: ${autoRes.autoQuery || "n/a"}`);
+      const nextResult = `${searchRes.text}\n\nAuto-query: ${autoRes.autoQuery || "n/a"}`;
+      setResult(nextResult);
+      void saveScreenDraft("khojak.result", nextResult);
       setAutoLeads(autoRes.leads || []);
 
       const timeSet = new Set(allClues.time);
@@ -62,6 +84,10 @@ export function KhojakScreen({ navigation }: Props) {
         peopleClues: nlpRes.clues.people,
         sentiment: nlpRes.sentiment.label,
       });
+    } catch {
+      const fallback = "Khojak live search is unavailable right now. Your query and previous clues are saved locally.";
+      setResult(fallback);
+      void saveScreenDraft("khojak.result", fallback);
     } finally {
       setLoading(false);
     }
@@ -69,11 +95,11 @@ export function KhojakScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Khojak Evidence Seeker</Text>
         <TextInput
           value={query}
-          onChangeText={setQuery}
+          onChangeText={onChangeQuery}
           placeholder="Search weather, transit, event clues"
           placeholderTextColor={colors.mutedInk}
           style={styles.input}
@@ -136,7 +162,7 @@ export function KhojakScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 20, paddingTop: 20 },
-  scroll: { gap: 10, paddingBottom: 120 },
+  scroll: { gap: 10, paddingBottom: 172, flexGrow: 1 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
   input: { backgroundColor: colors.white, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, color: colors.ink },
   button: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 13, alignItems: "center" },

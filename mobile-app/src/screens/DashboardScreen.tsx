@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { RootStackParamList } from "../../App";
 import { BottomNav } from "../components/BottomNav";
 import { colors } from "../theme/colors";
-import { getHealth, getVictimSession } from "../services/apiClient";
+import { getHealth, getVictimSession, loadScreenDraft, saveScreenDraft, saveVictimDetails } from "../services/apiClient";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
 
@@ -21,6 +21,10 @@ const cards = [
 export function DashboardScreen({ navigation }: Props) {
   const [status, setStatus] = useState("Checking backend...");
   const [caseLabel, setCaseLabel] = useState("");
+  const [incidentSummary, setIncidentSummary] = useState("");
+  const [phone, setPhone] = useState("");
+  const [emergencyContact, setEmergencyContact] = useState("");
+  const [savingBrief, setSavingBrief] = useState(false);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -38,7 +42,52 @@ export function DashboardScreen({ navigation }: Props) {
     if (session?.caseNumber) {
       setCaseLabel(`Your case: ${session.caseNumber}`);
     }
+
+    Promise.all([
+      loadScreenDraft("dashboard.caseBrief.summary"),
+      loadScreenDraft("dashboard.caseBrief.phone"),
+      loadScreenDraft("dashboard.caseBrief.emergency"),
+    ])
+      .then(([savedSummary, savedPhone, savedEmergency]) => {
+        if (savedSummary) setIncidentSummary(savedSummary);
+        if (savedPhone) setPhone(savedPhone);
+        if (savedEmergency) setEmergencyContact(savedEmergency);
+      })
+      .catch(() => undefined);
   }, [fade]);
+
+  const saveCaseBrief = async () => {
+    const session = getVictimSession();
+    if (!session) {
+      Alert.alert("Case unavailable", "Complete onboarding before saving case details.");
+      return;
+    }
+
+    setSavingBrief(true);
+    try {
+      const result = await saveVictimDetails({
+        profile: {
+          incidentSummary: incidentSummary.trim() || undefined,
+          phone: phone.trim() || undefined,
+          emergencyContact: emergencyContact.trim() || undefined,
+        },
+        fragments: incidentSummary.trim() ? [`[dashboard-case-brief] ${incidentSummary.trim()}`] : [],
+        source: "mobile-dashboard-case-brief",
+        forceCloudSync: true,
+      });
+
+      Alert.alert(
+        "Case brief saved",
+        result.localOnly
+          ? "Saved locally. Connect internet and save again for admin/officer sync."
+          : "Saved securely with integrity chain and synced to backend."
+      );
+    } catch (error) {
+      Alert.alert("Save failed", (error as Error).message || "Unable to save case details.");
+    } finally {
+      setSavingBrief(false);
+    }
+  };
 
   const cardRows: (typeof cards)[] = [];
   for (let i = 0; i < cards.length; i += 2) {
@@ -62,6 +111,52 @@ export function DashboardScreen({ navigation }: Props) {
           </Pressable>
           <Pressable style={styles.heroGhostButton} onPress={() => navigation.navigate("WebWorkspace")}>
             <Text style={styles.heroGhostLabel}>Open Command Center</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.caseBriefCard}>
+          <Text style={styles.caseBriefTitle}>Case Description & Priority Details</Text>
+          <Text style={styles.caseBriefSub}>Front intake card. Saved with integrity hash chain and synced for admin/officer view.</Text>
+
+          <TextInput
+            value={incidentSummary}
+            onChangeText={(value) => {
+              setIncidentSummary(value);
+              void saveScreenDraft("dashboard.caseBrief.summary", value);
+            }}
+            placeholder="Describe what happened in your own words"
+            placeholderTextColor={colors.mutedInk}
+            style={styles.caseBriefSummaryInput}
+            multiline
+          />
+
+          <View style={styles.caseBriefRow}>
+            <TextInput
+              value={phone}
+              onChangeText={(value) => {
+                setPhone(value);
+                void saveScreenDraft("dashboard.caseBrief.phone", value);
+              }}
+              placeholder="Phone number"
+              placeholderTextColor={colors.mutedInk}
+              style={styles.caseBriefInput}
+              keyboardType="phone-pad"
+            />
+            <TextInput
+              value={emergencyContact}
+              onChangeText={(value) => {
+                setEmergencyContact(value);
+                void saveScreenDraft("dashboard.caseBrief.emergency", value);
+              }}
+              placeholder="Emergency contact"
+              placeholderTextColor={colors.mutedInk}
+              style={styles.caseBriefInput}
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          <Pressable style={styles.caseBriefButton} onPress={saveCaseBrief}>
+            <Text style={styles.caseBriefButtonText}>{savingBrief ? "Saving securely..." : "Save Case Brief"}</Text>
           </Pressable>
         </View>
 
@@ -89,7 +184,7 @@ export function DashboardScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#EBEEF5", paddingHorizontal: 16, paddingTop: 14 },
-  scroll: { paddingBottom: 120 },
+  scroll: { paddingBottom: 176, flexGrow: 1 },
   heroTopWave: {
     height: 130,
     borderTopLeftRadius: 30,
@@ -130,6 +225,60 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   grid: { gap: 12 },
+  caseBriefCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#D7E1EF",
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  caseBriefTitle: {
+    color: "#132640",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  caseBriefSub: {
+    color: "#576887",
+    fontSize: 12,
+  },
+  caseBriefSummaryInput: {
+    borderWidth: 1,
+    borderColor: "#D5E0EE",
+    borderRadius: 12,
+    minHeight: 86,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    textAlignVertical: "top",
+    color: colors.ink,
+    backgroundColor: "#FAFCFF",
+  },
+  caseBriefRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  caseBriefInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#D5E0EE",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: colors.ink,
+    backgroundColor: "#FAFCFF",
+  },
+  caseBriefButton: {
+    backgroundColor: "#123052",
+    borderRadius: 999,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  caseBriefButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   row: { flexDirection: "row", gap: 12 },
   cardWrap: { flex: 1 },
   card: { borderRadius: 18, padding: 16, minHeight: 102 },

@@ -22,7 +22,7 @@ import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { DocsScreen } from "./src/screens/DocsScreen";
 import { WorkspaceWebScreen } from "./src/screens/WorkspaceWebScreen";
 import { PreloaderScreen } from "./src/screens/PreloaderScreen";
-import { registerVictimFromIdentity } from "./src/services/apiClient";
+import { hydrateVictimSessionFromLocal, registerVictimFromIdentity } from "./src/services/apiClient";
 
 export type RootStackParamList = {
   SafeEntry: undefined;
@@ -78,6 +78,7 @@ function MobileNavigator() {
       const minDelay = new Promise((resolve) => setTimeout(resolve, 1400));
 
       try {
+        await hydrateVictimSessionFromLocal();
         if (isSignedIn) {
           setBootMessage("Securing your case vault...");
           if (!isUserLoaded || !user) {

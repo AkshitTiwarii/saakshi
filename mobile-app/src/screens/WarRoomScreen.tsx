@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { RootStackParamList } from "../../App";
@@ -7,13 +7,16 @@ import { colors } from "../theme/colors";
 import {
   assessTraumaForCurrentCase,
   calibrateDistressForCurrentCase,
+  getLocalCaseCacheForCurrentSession,
   generateAdversarialAnalysis,
   generateWarRoomIntelligenceForCurrentCase,
   generateModeAwareCoachReply,
   getVictimSession,
+  loadScreenDraft,
   normalizeTemporalPhraseForCurrentCase,
   predictLegalForCurrentCase,
   persistVoiceChatMessage,
+  saveScreenDraft,
 } from "../services/apiClient";
 
 type Props = NativeStackScreenProps<RootStackParamList, "WarRoom">;
@@ -25,12 +28,37 @@ export function WarRoomScreen({ navigation }: Props) {
   const [coachInput, setCoachInput] = useState("");
   const [coachChat, setCoachChat] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
 
+  useEffect(() => {
+    Promise.all([
+      loadScreenDraft("warroom.facts"),
+      loadScreenDraft("warroom.analysis"),
+      loadScreenDraft("warroom.chat"),
+    ])
+      .then(([savedFacts, savedAnalysis, savedChat]) => {
+        if (savedFacts) setFacts(savedFacts);
+        if (savedAnalysis) setAnalysis(savedAnalysis);
+        if (savedChat) {
+          try {
+            setCoachChat(JSON.parse(savedChat));
+          } catch {
+            setCoachChat([]);
+          }
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const onChangeFacts = (value: string) => {
+    setFacts(value);
+    void saveScreenDraft("warroom.facts", value);
+  };
+
   const run = async () => {
     if (!facts.trim()) return;
     setLoading(true);
     const caseId = getVictimSession()?.caseId || "demo-case-001";
     try {
-      const [result, intelligence, legalPrediction, temporal, trauma, distress] = await Promise.all([
+      const [result, intelligence, legalPrediction, temporal, trauma, distress] = await Promise.allSettled([
         generateAdversarialAnalysis(caseId, [{ content: facts }]),
         generateWarRoomIntelligenceForCurrentCase(),
         predictLegalForCurrentCase(facts),
@@ -38,16 +66,24 @@ export function WarRoomScreen({ navigation }: Props) {
         assessTraumaForCurrentCase(facts),
         calibrateDistressForCurrentCase({ transcript: facts }),
       ]);
-      const virodhi = result.virodhi.map((v) => `- ${v.title}: ${v.description}`).join("\n");
-      const raksha = result.raksha.map((r) => `- ${r.title}: ${r.description}`).join("\n");
-      const legal = intelligence.legalSuggestions.slice(0, 4).map((l) => `- ${l.code}: ${l.title} (${l.why})`).join("\n");
-      const risks = intelligence.contradictionRisks.slice(0, 4).map((r) => `- ${r.level}: ${r.title} - ${r.detail}`).join("\n");
-      const modelLegal = legalPrediction.suggestions.slice(0, 4).map((item) => `- ${item.code}: ${item.title}`).join("\n");
-      setAnalysis(
+      const resultData = result.status === "fulfilled" ? result.value : null;
+      const intelligenceData = intelligence.status === "fulfilled" ? intelligence.value : null;
+      const legalPredictionData = legalPrediction.status === "fulfilled" ? legalPrediction.value : null;
+      const temporalData = temporal.status === "fulfilled" ? temporal.value : null;
+      const traumaData = trauma.status === "fulfilled" ? trauma.value : null;
+      const distressData = distress.status === "fulfilled" ? distress.value : null;
+      const localCaseCache = await getLocalCaseCacheForCurrentSession().catch(() => null);
+
+      const virodhi = resultData?.virodhi.map((v) => `- ${v.title}: ${v.description}`).join("\n") || "";
+      const raksha = resultData?.raksha.map((r) => `- ${r.title}: ${r.description}`).join("\n") || "";
+      const legal = intelligenceData?.legalSuggestions.slice(0, 4).map((l) => `- ${l.code}: ${l.title} (${l.why})`).join("\n") || "";
+      const risks = intelligenceData?.contradictionRisks.slice(0, 4).map((r) => `- ${r.level}: ${r.title} - ${r.detail}`).join("\n") || "";
+      const modelLegal = legalPredictionData?.suggestions.slice(0, 4).map((item) => `- ${item.code}: ${item.title}`).join("\n") || "";
+      const output =
         [
-          `Strength Score: ${result.strengthScore}`,
-          `Readiness Score: ${intelligence.readinessScore}`,
-          `AI Summary: ${intelligence.summary}`,
+          `Strength Score: ${resultData?.strengthScore ?? "n/a"}`,
+          `Readiness Score: ${intelligenceData?.readinessScore ?? "n/a"}`,
+          `AI Summary: ${intelligenceData?.summary || "Using local fallback summary"}`,
           "",
           "Virodhi",
           virodhi || "- none",
@@ -61,25 +97,36 @@ export function WarRoomScreen({ navigation }: Props) {
           "Contradiction Risks",
           risks || "- none",
           "",
-          `Law Model Provider: ${legalPrediction.provider}`,
-          `Law Model Summary: ${legalPrediction.summary}`,
+          `Law Model Provider: ${legalPredictionData?.provider || "fallback"}`,
+          `Law Model Summary: ${legalPredictionData?.summary || "Legal model currently unavailable"}`,
           "Law Model Suggestions",
           modelLegal || "- none",
           "",
-          `Temporal Window: ${temporal.startDate} to ${temporal.endDate} (${Math.round(temporal.confidence * 100)}%)`,
-          `Temporal Rationale: ${temporal.rationale}`,
+          temporalData
+            ? `Temporal Window: ${temporalData.startDate} to ${temporalData.endDate} (${Math.round(temporalData.confidence * 100)}%)`
+            : "Temporal Window: unavailable",
+          temporalData ? `Temporal Rationale: ${temporalData.rationale}` : "Temporal Rationale: fallback mode",
           "",
-          `Trauma Band: ${trauma.band}`,
-          `Trauma Flags: ${trauma.flags.join(", ") || "none"}`,
-          `Distress Band: ${distress.band} (${Math.round(distress.score * 100)}%)`,
-          `Recommended pace: ${distress.recommendedPace}`,
+          `Trauma Band: ${traumaData?.band || "n/a"}`,
+          `Trauma Flags: ${traumaData?.flags.join(", ") || "none"}`,
+          `Distress Band: ${distressData?.band || "n/a"}${distressData ? ` (${Math.round(distressData.score * 100)}%)` : ""}`,
+          `Recommended pace: ${distressData?.recommendedPace || "n/a"}`,
           "",
-          `Fake-victim risk band: ${intelligence.fakeVictimAssessment.band} (${Math.round(intelligence.fakeVictimAssessment.probability * 100)}%)`,
-          intelligence.fakeVictimAssessment.flags.length
-            ? `Risk flags: ${intelligence.fakeVictimAssessment.flags.join(", ")}`
+          intelligenceData
+            ? `Fake-victim risk band: ${intelligenceData.fakeVictimAssessment.band} (${Math.round(intelligenceData.fakeVictimAssessment.probability * 100)}%)`
+            : "Fake-victim risk band: unavailable",
+          intelligenceData?.fakeVictimAssessment.flags.length
+            ? `Risk flags: ${intelligenceData.fakeVictimAssessment.flags.join(", ")}`
             : "Risk flags: none",
-        ].join("\n")
-      );
+          "",
+          `Local chain length: ${localCaseCache?.chain.length || 0}`,
+          `Stored local fragments: ${localCaseCache?.fragments.length || 0}`,
+        ].join("\n");
+      setAnalysis(output);
+      void saveScreenDraft("warroom.analysis", output);
+    } catch {
+      setAnalysis("War Room could not complete this run. Check backend and API keys, then retry.");
+      void saveScreenDraft("warroom.analysis", "War Room could not complete this run. Check backend and API keys, then retry.");
     } finally {
       setLoading(false);
     }
@@ -89,21 +136,37 @@ export function WarRoomScreen({ navigation }: Props) {
     if (!coachInput.trim()) return;
     const text = coachInput.trim();
     setCoachInput("");
-    setCoachChat((prev) => [...prev, { role: "user", text }]);
-    const reply = await generateModeAwareCoachReply({ mode: "supportive_lawyer", text });
-    setCoachChat((prev) => [...prev, { role: "assistant", text: reply }]);
-    await persistVoiceChatMessage({ role: "user", mode: "supportive_lawyer", text });
-    await persistVoiceChatMessage({ role: "assistant", mode: "supportive_lawyer", text: reply });
+    setCoachChat((prev) => {
+      const next = [...prev, { role: "user" as const, text }];
+      void saveScreenDraft("warroom.chat", JSON.stringify(next));
+      return next;
+    });
+    try {
+      const reply = await generateModeAwareCoachReply({ mode: "supportive_lawyer", text });
+      setCoachChat((prev) => {
+        const next = [...prev, { role: "assistant" as const, text: reply }];
+        void saveScreenDraft("warroom.chat", JSON.stringify(next));
+        return next;
+      });
+      await persistVoiceChatMessage({ role: "user", mode: "supportive_lawyer", text });
+      await persistVoiceChatMessage({ role: "assistant", mode: "supportive_lawyer", text: reply });
+    } catch {
+      setCoachChat((prev) => {
+        const next = [...prev, { role: "assistant" as const, text: "Coach is temporarily unavailable. Your message was saved locally." }];
+        void saveScreenDraft("warroom.chat", JSON.stringify(next));
+        return next;
+      });
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>War Room</Text>
         <Text style={styles.sub}>Stress-test your statement before external review.</Text>
         <TextInput
           value={facts}
-          onChangeText={setFacts}
+          onChangeText={onChangeFacts}
           placeholder="Paste timeline or key claim"
           placeholderTextColor={colors.mutedInk}
           style={styles.input}
@@ -146,7 +209,7 @@ export function WarRoomScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 20, paddingTop: 20 },
-  scroll: { gap: 10, paddingBottom: 124 },
+  scroll: { gap: 10, paddingBottom: 176, flexGrow: 1 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
   sub: { color: colors.mutedInk, fontSize: 13, lineHeight: 20 },
   input: { backgroundColor: colors.white, borderRadius: 16, padding: 14, minHeight: 140, color: colors.ink, textAlignVertical: "top" },

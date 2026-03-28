@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { useUser } from '@clerk/clerk-react';
 import { 
   ArrowLeft, 
   Eraser, 
@@ -11,15 +12,15 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { auth, db } from '../firebase';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
 
 import { analyzeImage } from '../services/geminiService.ts';
+import { resolveCanonicalVictimIdentity, saveVictimWebCapture } from '../services/canonicalCaseClient';
 import { SuccessFeedback } from './SuccessFeedback';
 import { AnimatePresence } from 'motion/react';
 
 export const CaptureDraw = () => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#2D333B');
@@ -122,13 +123,29 @@ export const CaptureDraw = () => {
         description: analysis.description
       };
       
-      await addDoc(collection(db, 'fragments'), {
-        uid: auth.currentUser?.uid,
-        content: dataUrl,
-        type: 'drawing',
-        timestamp: Timestamp.now(),
-        classification: result,
-        geoTag: locationData
+      const identity = resolveCanonicalVictimIdentity({
+        clerkId: user?.id,
+        email: user?.primaryEmailAddress?.emailAddress,
+        displayName: user?.fullName,
+      });
+
+      const locationSummary = locationData
+        ? `lat:${locationData.lat.toFixed(5)}, lng:${locationData.lng.toFixed(5)}`
+        : 'location-unavailable';
+
+      const summary = analysis.description || 'Drawing-based recollection captured.';
+
+      await saveVictimWebCapture({
+        victimUniqueId: identity.victimUniqueId,
+        email: identity.email,
+        displayName: identity.displayName,
+        incidentSummary: summary,
+        fragments: [
+          `[DRAWING_SUMMARY] ${summary}`,
+          `[DRAWING_CLASSIFICATION] ${JSON.stringify(result)}`,
+          `[DRAWING_LOCATION] ${locationSummary}`,
+        ],
+        source: 'web-draw-capture',
       });
 
       setClassification(result);

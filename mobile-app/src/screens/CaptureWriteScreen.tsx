@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { RootStackParamList } from "../../App";
 import { colors } from "../theme/colors";
 import {
   classifyFragmentForCurrentCase,
+  loadScreenDraft,
+  saveScreenDraft,
   saveVictimDetails,
 } from "../services/apiClient";
 import { BottomNav } from "../components/BottomNav";
@@ -16,28 +18,43 @@ export function CaptureWriteScreen({ navigation, route }: Props) {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    loadScreenDraft("capture.write.text").then(setText).catch(() => undefined);
+  }, []);
+
+  const onChangeTextValue = (value: string) => {
+    setText(value);
+    void saveScreenDraft("capture.write.text", value);
+  };
+
   const submit = async () => {
     if (!text.trim()) return;
     setLoading(true);
-    const ai = await classifyFragmentForCurrentCase(text);
-    await saveVictimDetails({
-      profile: {},
-      fragments: [text.trim()],
-      source: "mobile-capture-write",
-    }).catch(() => {
-      // Allow local continuation if backend is temporarily unavailable.
-      return null;
-    });
-    setResult(
-      [ai.emotion, ai.time, ai.location].filter(Boolean).join(" • ") ||
-        "Fragment secured with backend integrity chain."
-    );
-    setLoading(false);
+    try {
+      const ai = await classifyFragmentForCurrentCase(text);
+      const saveResult = await saveVictimDetails({
+        profile: {},
+        fragments: [`[write] ${text.trim()}`],
+        source: "mobile-capture-write",
+      }).catch(() => null);
+
+      setResult(
+        [
+          [ai.emotion, ai.time, ai.location].filter(Boolean).join(" • "),
+          saveResult?.localOnly ? "Saved locally" : "Synced",
+          saveResult?.integrity?.latestHash ? `Hash ${saveResult.integrity.latestHash.slice(0, 12)}...` : "",
+        ]
+          .filter(Boolean)
+          .join(" • ") || "Fragment secured in local vault."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Write Fragment</Text>
         <Text style={styles.sub}>Mood: {route.params?.mood || "not-set"}</Text>
 
@@ -50,14 +67,14 @@ export function CaptureWriteScreen({ navigation, route }: Props) {
 
         <TextInput
           value={text}
-          onChangeText={setText}
+          onChangeText={onChangeTextValue}
           placeholder="I remember..."
           placeholderTextColor={colors.mutedInk}
           style={styles.input}
           multiline
         />
         <Pressable style={styles.button} onPress={submit}>
-          <Text style={styles.buttonLabel}>{loading ? "Processing..." : "Secure Fragment"}</Text>
+          <Text style={styles.buttonLabel}>{loading ? "Processing..." : "Submit Written Testimony"}</Text>
         </Pressable>
         {!!result && <Text style={styles.result}>{result}</Text>}
       </ScrollView>
@@ -69,7 +86,7 @@ export function CaptureWriteScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 20, paddingTop: 20 },
-  scroll: { gap: 10, paddingBottom: 124 },
+  scroll: { gap: 10, paddingBottom: 172, flexGrow: 1 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
   sub: { color: colors.mutedInk, marginBottom: 6 },
   infoCard: {

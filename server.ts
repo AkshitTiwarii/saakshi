@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -66,7 +67,88 @@ const reportFileById = new Map<string, string>();
 
 const hashQueuePath = path.join(process.cwd(), "workers", "hashAnchoring", "queue.json");
 const reportsPath = path.join(process.cwd(), "reports");
+const caseStatePath = path.join(process.cwd(), "backend", "case", "case-state.json");
 const mlServiceUrl = (process.env.ML_SERVICE_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
+
+type PersistedCaseState = {
+  caseAssignments: CaseAssignment[];
+  officerDesignations: OfficerDesignation[];
+  victimCaseMap: Array<[string, string]>;
+  victimDetailsByCase: Array<[string, VictimCasePayload]>;
+  caseIntegrityByCase: Array<[string, CaseIntegrityEntry[]]>;
+};
+
+function ensureParentDir(filePath: string) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function persistCaseState() {
+  try {
+    ensureParentDir(caseStatePath);
+    const data: PersistedCaseState = {
+      caseAssignments: Array.from(caseAssignments.values()),
+      officerDesignations,
+      victimCaseMap: Array.from(victimCaseMap.entries()),
+      victimDetailsByCase: Array.from(victimDetailsByCase.entries()),
+      caseIntegrityByCase: Array.from(caseIntegrityByCase.entries()),
+    };
+    fs.writeFileSync(caseStatePath, JSON.stringify(data, null, 2), "utf8");
+  } catch (error) {
+    console.error("persistCaseState failed", error);
+  }
+}
+
+function loadPersistedCaseState() {
+  if (!fs.existsSync(caseStatePath)) return;
+
+  try {
+    const raw = fs.readFileSync(caseStatePath, "utf8");
+    const parsed = JSON.parse(raw || "{}") as Partial<PersistedCaseState>;
+
+    caseAssignments.clear();
+    victimCaseMap.clear();
+    victimDetailsByCase.clear();
+    caseIntegrityByCase.clear();
+    officerDesignations.splice(0, officerDesignations.length);
+
+    for (const item of parsed.caseAssignments || []) {
+      if (item?.caseId) {
+        caseAssignments.set(item.caseId, item);
+      }
+    }
+
+    for (const tuple of parsed.victimCaseMap || []) {
+      if (Array.isArray(tuple) && tuple.length === 2) {
+        victimCaseMap.set(String(tuple[0]), String(tuple[1]));
+      }
+    }
+
+    for (const tuple of parsed.victimDetailsByCase || []) {
+      if (Array.isArray(tuple) && tuple.length === 2) {
+        victimDetailsByCase.set(String(tuple[0]), tuple[1]);
+      }
+    }
+
+    for (const tuple of parsed.caseIntegrityByCase || []) {
+      if (Array.isArray(tuple) && tuple.length === 2 && Array.isArray(tuple[1])) {
+        caseIntegrityByCase.set(String(tuple[0]), tuple[1]);
+      }
+    }
+
+    for (const designation of parsed.officerDesignations || []) {
+      if (designation?.designationId) {
+        officerDesignations.push(designation);
+      }
+    }
+  } catch (error) {
+    console.error("loadPersistedCaseState failed", error);
+  }
+}
+
+loadPersistedCaseState();
 
 function readAdminSession(req: express.Request) {
   const token = String(req.header("x-admin-session") || "").trim();
@@ -352,33 +434,206 @@ function buildEvidenceLeads(fragments: string[], queryHint?: string) {
   return leads;
 }
 
-async function renderCaseReportPdfBuffer(reportTitle: string, lines: string[]): Promise<Uint8Array> {
+async function buildCaseInsightBundle(params: {
+  caseId: string;
+  profile?: VictimProfile;
+  fragments: string[];
+}) {
+  const summarySeed = [
+    String(params.profile?.incidentSummary || "").trim(),
+    ...params.fragments.slice(0, 12),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, 5000);
+
+  const safeSummary = summarySeed || "No detailed summary available yet.";
+
+  const [legalMl, temporalMl, traumaMl, distressMl] = await Promise.all([
+    callMlService("/legal/predict", { case_id: params.caseId, text: safeSummary }, 15000),
+    callMlService("/temporal/normalize", { phrase: safeSummary.slice(0, 320) }, 12000),
+    callMlService("/trauma/assess", { text: safeSummary }, 12000),
+    callMlService("/distress/calibrate", { transcript: safeSummary }, 12000),
+  ]);
+
+  return {
+    legalSuggestions: extractLegalSectionsFromFragments(params.fragments),
+    contradictionRisks: buildContradictionRisks(params.fragments),
+    evidenceLeads: buildEvidenceLeads(params.fragments, params.profile?.incidentSummary),
+    fakeVictimAssessment: buildFakeVictimAssessment(params.fragments),
+    mlPredictions: {
+      legal: legalMl.ok ? (legalMl.data as Record<string, unknown>) : null,
+      temporal: temporalMl.ok ? (temporalMl.data as Record<string, unknown>) : null,
+      trauma: traumaMl.ok ? (traumaMl.data as Record<string, unknown>) : null,
+      distress: distressMl.ok ? (distressMl.data as Record<string, unknown>) : null,
+      providerStatus: {
+        legal: legalMl.ok ? "ok" : "unavailable",
+        temporal: temporalMl.ok ? "ok" : "unavailable",
+        trauma: traumaMl.ok ? "ok" : "unavailable",
+        distress: distressMl.ok ? "ok" : "unavailable",
+      },
+    },
+  };
+}
+
+function wrapPdfText(params: {
+  text: string;
+  maxWidth: number;
+  font: import("pdf-lib").PDFFont;
+  size: number;
+}) {
+  const words = String(params.text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return [""];
+  }
+
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (params.font.widthOfTextAtSize(candidate, params.size) <= params.maxWidth) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+      current = word;
+    } else {
+      lines.push(word);
+      current = "";
+    }
+  }
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines;
+}
+
+async function renderCaseReportPdfBuffer(
+  reportTitle: string,
+  sections: Array<{ title: string; lines: string[] }>
+): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
-  const page = pdf.addPage([595, 842]);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const width = 595;
+  const height = 842;
+  const margin = 38;
+  const bodyWidth = width - margin * 2;
 
-  let y = 805;
-  page.drawText(reportTitle, {
-    x: 40,
-    y,
-    size: 16,
-    font: bold,
-    color: rgb(0.07, 0.13, 0.23),
-  });
-  y -= 22;
+  let page = pdf.addPage([width, height]);
+  let y = height - margin;
 
-  for (const line of lines) {
-    if (y < 48) break;
-    page.drawText(line.slice(0, 150), {
-      x: 40,
-      y,
-      size: 10.5,
-      font,
-      color: rgb(0.14, 0.16, 0.19),
+  const drawPageHeader = () => {
+    page.drawRectangle({
+      x: margin,
+      y: y - 38,
+      width: bodyWidth,
+      height: 34,
+      color: rgb(0.09, 0.2, 0.36),
     });
-    y -= 14;
+    page.drawText("Saakshi Forensic Intelligence Report", {
+      x: margin + 12,
+      y: y - 28,
+      size: 12,
+      font: bold,
+      color: rgb(1, 1, 1),
+    });
+    y -= 56;
+  };
+
+  const addPage = () => {
+    page = pdf.addPage([width, height]);
+    y = height - margin;
+    drawPageHeader();
+  };
+
+  drawPageHeader();
+
+  const titleLines = wrapPdfText({
+    text: reportTitle,
+    maxWidth: bodyWidth,
+    font: bold,
+    size: 17,
+  });
+
+  for (const titleLine of titleLines) {
+    if (y < 90) addPage();
+    page.drawText(titleLine, {
+      x: margin,
+      y,
+      size: 17,
+      font: bold,
+      color: rgb(0.08, 0.13, 0.22),
+    });
+    y -= 22;
   }
+  y -= 8;
+
+  for (const section of sections) {
+    if (y < 90) addPage();
+
+    page.drawRectangle({
+      x: margin,
+      y: y - 20,
+      width: bodyWidth,
+      height: 18,
+      color: rgb(0.9, 0.94, 0.99),
+    });
+    page.drawText(section.title, {
+      x: margin + 8,
+      y: y - 15,
+      size: 10.5,
+      font: bold,
+      color: rgb(0.11, 0.24, 0.43),
+    });
+    y -= 30;
+
+    for (const rawLine of section.lines) {
+      const wrapped = wrapPdfText({
+        text: rawLine,
+        maxWidth: bodyWidth - 6,
+        font,
+        size: 9.8,
+      });
+
+      for (const line of wrapped) {
+        if (y < 58) addPage();
+        page.drawText(line, {
+          x: margin + 3,
+          y,
+          size: 9.8,
+          font,
+          color: rgb(0.15, 0.18, 0.22),
+        });
+        y -= 13;
+      }
+    }
+
+    y -= 8;
+  }
+
+  const pages = pdf.getPages();
+  pages.forEach((p, index) => {
+    p.drawText(`Page ${index + 1} of ${pages.length}`, {
+      x: width - margin - 88,
+      y: 20,
+      size: 8.8,
+      font,
+      color: rgb(0.4, 0.45, 0.52),
+    });
+    p.drawText("Confidential - Authorized legal use only", {
+      x: margin,
+      y: 20,
+      size: 8.8,
+      font,
+      color: rgb(0.4, 0.45, 0.52),
+    });
+  });
 
   return pdf.save();
 }
@@ -1018,34 +1273,77 @@ async function startServer() {
         return res.status(400).json({ error: "caseId and audioBase64 are required" });
       }
 
-      const config: {
+      const baseConfig: {
         languageCode: string;
         enableAutomaticPunctuation: boolean;
         model: string;
-        encoding?: "WEBM_OPUS" | "AMR" | "LINEAR16";
-        sampleRateHertz?: number;
       } = {
         languageCode,
         enableAutomaticPunctuation: true,
         model: "latest_short",
       };
 
+      const config: {
+        languageCode: string;
+        enableAutomaticPunctuation: boolean;
+        model: string;
+        encoding?: "WEBM_OPUS" | "AMR" | "AMR_WB" | "LINEAR16";
+        sampleRateHertz?: number;
+      } = { ...baseConfig };
+
       if (mimeType.includes("webm")) {
         config.encoding = "WEBM_OPUS";
         config.sampleRateHertz = 48000;
       } else if (mimeType.includes("3gpp") || mimeType.includes("amr")) {
-        config.encoding = "AMR";
-        config.sampleRateHertz = 8000;
-      } else if (mimeType.includes("wav") || mimeType.includes("pcm")) {
+        config.encoding = "AMR_WB";
+        config.sampleRateHertz = 16000;
+      } else if (mimeType.includes("wav") || mimeType.includes("pcm") || mimeType.includes("caf")) {
         config.encoding = "LINEAR16";
+        config.sampleRateHertz = 44100;
       }
 
-      const [speechRes] = await googleSpeechClient.recognize({
+      const configAttempts: Array<{
+        languageCode: string;
+        enableAutomaticPunctuation: boolean;
+        model: string;
+        encoding?: "WEBM_OPUS" | "AMR" | "AMR_WB" | "LINEAR16";
+        sampleRateHertz?: number;
+      }> = [
         config,
-        audio: {
-          content: audioBase64,
-        },
-      });
+        // Some Android devices report 3gpp but actually record wideband AMR.
+        ...(mimeType.includes("3gpp") || mimeType.includes("amr")
+          ? [
+              {
+                ...baseConfig,
+                encoding: "AMR" as const,
+                sampleRateHertz: 8000,
+              },
+            ]
+          : []),
+        baseConfig,
+      ];
+
+      let speechRes: any | undefined;
+      let lastError: unknown = null;
+
+      for (const cfg of configAttempts) {
+        try {
+          const [response] = await googleSpeechClient.recognize({
+            config: cfg,
+            audio: {
+              content: audioBase64,
+            },
+          });
+          speechRes = response;
+          break;
+        } catch (attemptError) {
+          lastError = attemptError;
+        }
+      }
+
+      if (!speechRes) {
+        throw lastError || new Error("Speech recognition failed");
+      }
 
       const best = (speechRes.results || [])
         .map((result) => result.alternatives?.[0])
@@ -1085,7 +1383,31 @@ async function startServer() {
       });
     } catch (error) {
       console.error("voice-transcribe failed", error);
-      res.status(500).json({ error: "Voice transcription failed" });
+      const err = error as any;
+      const detail = String(err?.message || "").trim();
+      const reason = String(err?.reason || err?.errorInfoMetadata?.reason || "").toUpperCase();
+      const service = String(err?.errorInfoMetadata?.service || "");
+
+      if (reason === "SERVICE_DISABLED" || detail.includes("SERVICE_DISABLED") || detail.includes("speech.googleapis.com")) {
+        return res.status(500).json({
+          error: "Voice transcription failed: Google Cloud Speech-to-Text API is disabled for this project.",
+          hint: "Enable Speech-to-Text API in Google Cloud Console, then retry after 2-5 minutes.",
+          service,
+        });
+      }
+
+      if (reason === "PERMISSION_DENIED" || detail.includes("PERMISSION_DENIED")) {
+        return res.status(500).json({
+          error: "Voice transcription failed: service account lacks Speech-to-Text permissions.",
+          hint: "Grant required IAM roles to the configured service account and retry.",
+          service,
+        });
+      }
+
+      res.status(500).json({
+        error: detail ? `Voice transcription failed: ${detail}` : "Voice transcription failed",
+        hint: "Check Speech-to-Text API enablement, service-account permissions, and audio encoding compatibility.",
+      });
     }
   });
 
@@ -1224,10 +1546,11 @@ async function startServer() {
 
       const payload = victimDetailsByCase.get(caseId);
       const fragments = (payload?.fragments || []).map((fragment) => String(fragment || "").trim()).filter(Boolean);
-      const legalSuggestions = extractLegalSectionsFromFragments(fragments);
-      const contradictionRisks = buildContradictionRisks(fragments);
-      const fakeVictimAssessment = buildFakeVictimAssessment(fragments);
-      const evidenceLeads = buildEvidenceLeads(fragments);
+      const caseInsight = await buildCaseInsightBundle({
+        caseId,
+        profile: payload?.profile,
+        fragments,
+      });
       const integrityEntries = caseIntegrityByCase.get(caseId) || [];
 
       const reportObject = {
@@ -1238,10 +1561,11 @@ async function startServer() {
         audience,
         profile: payload?.profile || {},
         fragments,
-        legalSuggestions,
-        contradictionRisks,
-        evidenceLeads,
-        fakeVictimAssessment,
+        legalSuggestions: caseInsight.legalSuggestions,
+        contradictionRisks: caseInsight.contradictionRisks,
+        evidenceLeads: caseInsight.evidenceLeads,
+        fakeVictimAssessment: caseInsight.fakeVictimAssessment,
+        mlPredictions: caseInsight.mlPredictions,
         integrity: {
           chainLength: integrityEntries.length,
           latestHash: integrityEntries.length ? integrityEntries[integrityEntries.length - 1].currentHash : "GENESIS",
@@ -1257,34 +1581,85 @@ async function startServer() {
       };
       const reportHash = sha256Hex(JSON.stringify({ reportObject, artifactHashes }));
 
-      const reportLines = [
-        `Generated: ${reportObject.reportGeneratedAt}`,
-        `Case Number: ${reportObject.caseNumber}`,
-        `Victim UID: ${reportObject.victimUniqueId}`,
-        `Audience: ${audience}`,
-        `--- Profile ---`,
-        `Display Name: ${String((reportObject.profile as VictimProfile)?.displayName || "n/a")}`,
-        `Email: ${String((reportObject.profile as VictimProfile)?.email || "n/a")}`,
-        `Phone: ${String((reportObject.profile as VictimProfile)?.phone || "n/a")}`,
-        `Incident Summary: ${String((reportObject.profile as VictimProfile)?.incidentSummary || "n/a")}`,
-        `--- Fragments ---`,
-        ...reportObject.fragments.map((fragment, index) => `${index + 1}. ${fragment}`),
-        `--- Legal Suggestions (IPC/CrPC) ---`,
-        ...reportObject.legalSuggestions.map((item) => `${item.code}: ${item.title} (${item.why})`),
-        `--- Contradiction / Risk Analysis ---`,
-        ...reportObject.contradictionRisks.map((risk) => `${risk.level}: ${risk.title} | ${risk.detail}`),
-        `--- Evidence Automation Leads ---`,
-        ...reportObject.evidenceLeads.map((lead) => `${lead.type} | ${lead.source} | ${lead.query}`),
-        `--- Fake Victim Assessment ---`,
-        `Probability: ${reportObject.fakeVictimAssessment.probability}`,
-        `Band: ${reportObject.fakeVictimAssessment.band}`,
-        `Flags: ${(reportObject.fakeVictimAssessment.flags || []).join(", ") || "none"}`,
-        `--- Integrity Packaging ---`,
-        `profileHash: ${artifactHashes.profileHash}`,
-        `fragmentsHash: ${artifactHashes.fragmentsHash}`,
-        `legalHash: ${artifactHashes.legalHash}`,
-        `evidenceHash: ${artifactHashes.evidenceHash}`,
-        `reportHash: ${reportHash}`,
+      const reportSections = [
+        {
+          title: "Case Metadata",
+          lines: [
+            `Generated: ${reportObject.reportGeneratedAt}`,
+            `Case ID: ${reportObject.caseId}`,
+            `Case Number: ${reportObject.caseNumber}`,
+            `Victim UID: ${reportObject.victimUniqueId}`,
+            `Audience: ${audience}`,
+          ],
+        },
+        {
+          title: "Victim Profile & Incident",
+          lines: [
+            `Display Name: ${String((reportObject.profile as VictimProfile)?.displayName || "n/a")}`,
+            `Email: ${String((reportObject.profile as VictimProfile)?.email || "n/a")}`,
+            `Phone: ${String((reportObject.profile as VictimProfile)?.phone || "n/a")}`,
+            `Emergency Contact: ${String((reportObject.profile as VictimProfile)?.emergencyContact || "n/a")}`,
+            `Incident Summary: ${String((reportObject.profile as VictimProfile)?.incidentSummary || "n/a")}`,
+          ],
+        },
+        {
+          title: "Victim Fragments",
+          lines: reportObject.fragments.length
+            ? reportObject.fragments.map((fragment, index) => `${index + 1}. ${fragment}`)
+            : ["No fragments submitted yet."],
+        },
+        {
+          title: "Legal Suggestions (IPC/CrPC)",
+          lines: reportObject.legalSuggestions.map((item) => `${item.code}: ${item.title} (${item.why})`),
+        },
+        {
+          title: "Contradiction & Defense Risks",
+          lines: reportObject.contradictionRisks.map(
+            (risk) => `${risk.level}: ${risk.title} | ${risk.detail} | Mitigation: ${risk.mitigation}`
+          ),
+        },
+        {
+          title: "Evidence Automation Leads",
+          lines: reportObject.evidenceLeads.map(
+            (lead) => `${lead.type} | ${lead.source} | ${lead.query} | confidence=${lead.confidence}`
+          ),
+        },
+        {
+          title: "Victim Authenticity Risk Guard (Assistive)",
+          lines: [
+            `Probability: ${reportObject.fakeVictimAssessment.probability}`,
+            `Band: ${reportObject.fakeVictimAssessment.band}`,
+            `Flags: ${(reportObject.fakeVictimAssessment.flags || []).join(", ") || "none"}`,
+            `Disclaimer: ${reportObject.fakeVictimAssessment.disclaimer}`,
+          ],
+        },
+        {
+          title: "ML Prediction Snapshot",
+          lines: [
+            `ML legal status: ${String(reportObject.mlPredictions.providerStatus.legal)}`,
+            `ML temporal status: ${String(reportObject.mlPredictions.providerStatus.temporal)}`,
+            `ML trauma status: ${String(reportObject.mlPredictions.providerStatus.trauma)}`,
+            `ML distress status: ${String(reportObject.mlPredictions.providerStatus.distress)}`,
+            `Legal model summary: ${String((reportObject.mlPredictions.legal as any)?.summary || "n/a")}`,
+            `Legal model confidence: ${String((reportObject.mlPredictions.legal as any)?.confidence || "n/a")}`,
+            `Temporal rationale: ${String((reportObject.mlPredictions.temporal as any)?.rationale || "n/a")}`,
+            `Trauma band: ${String((reportObject.mlPredictions.trauma as any)?.band || "n/a")}`,
+            `Distress band: ${String((reportObject.mlPredictions.distress as any)?.band || "n/a")}`,
+            `Distress score: ${String((reportObject.mlPredictions.distress as any)?.score || "n/a")}`,
+          ],
+        },
+        {
+          title: "Integrity Packaging",
+          lines: [
+            `profileHash: ${artifactHashes.profileHash}`,
+            `fragmentsHash: ${artifactHashes.fragmentsHash}`,
+            `legalHash: ${artifactHashes.legalHash}`,
+            `evidenceHash: ${artifactHashes.evidenceHash}`,
+            `latestIntegrityHash: ${reportObject.integrity.latestHash}`,
+            `integrityRootHash: ${reportObject.integrity.rootHash}`,
+            `reportHash: ${reportHash}`,
+          ],
+        },
       ];
 
       if (!fs.existsSync(reportsPath)) {
@@ -1292,7 +1667,10 @@ async function startServer() {
       }
 
       const reportId = `report-${randomUUID()}`;
-      const pdfBytes = await renderCaseReportPdfBuffer(`Saakshi Calibrated Report - ${assignment.caseNumber}`, reportLines);
+      const pdfBytes = await renderCaseReportPdfBuffer(
+        `Saakshi Calibrated Report - ${assignment.caseNumber}`,
+        reportSections
+      );
       const fileName = `${reportId}.pdf`;
       const filePath = path.join(reportsPath, fileName);
       fs.writeFileSync(filePath, Buffer.from(pdfBytes));
@@ -1308,6 +1686,13 @@ async function startServer() {
           latestIntegrityHash: reportObject.integrity.latestHash,
           integrityRootHash: reportObject.integrity.rootHash,
           reportHash,
+        },
+        intelligence: {
+          legalSuggestions: reportObject.legalSuggestions,
+          contradictionRisks: reportObject.contradictionRisks,
+          evidenceLeads: reportObject.evidenceLeads,
+          fakeVictimAssessment: reportObject.fakeVictimAssessment,
+          mlPredictions: reportObject.mlPredictions,
         },
       });
     } catch (error) {
@@ -1378,6 +1763,7 @@ async function startServer() {
       const newAssignment = createCaseAssignment(victimUniqueId);
       caseAssignments.set(newAssignment.caseId, newAssignment);
       victimCaseMap.set(victimUniqueId, newAssignment.caseId);
+      persistCaseState();
 
       logAuditEvent(
         buildAuditEvent({
@@ -1460,6 +1846,7 @@ async function startServer() {
         blobHash: profileHash,
         metadataHash: sha256Hex(JSON.stringify({ authProvider: "google" })),
       });
+      persistCaseState();
 
       res.json({
         isNew: true,
@@ -1543,6 +1930,7 @@ async function startServer() {
         blobHash: sha256Hex(JSON.stringify(mergedFragments)),
         metadataHash: sha256Hex(JSON.stringify(mergedProfile)),
       });
+      persistCaseState();
 
       res.json({
         success: true,
@@ -1558,6 +1946,48 @@ async function startServer() {
     } catch (error) {
       console.error("victim save-details failed", error);
       res.status(500).json({ error: "Failed to save victim details" });
+    }
+  });
+
+  /**
+   * GET /api/victim/case-overview?victimUniqueId=...
+   * Canonical victim case read model used by web/mobile dashboards.
+   */
+  app.get("/api/victim/case-overview", (req, res) => {
+    try {
+      const victimUniqueId = String(req.query.victimUniqueId || "").trim();
+      if (!victimUniqueId) {
+        return res.status(400).json({ error: "victimUniqueId query param is required" });
+      }
+
+      const caseId = victimCaseMap.get(victimUniqueId);
+      if (!caseId) {
+        return res.status(404).json({ error: "No case mapped for victim" });
+      }
+
+      const caseAssignment = caseAssignments.get(caseId);
+      if (!caseAssignment) {
+        return res.status(404).json({ error: "Case assignment not found" });
+      }
+
+      const detail = victimDetailsByCase.get(caseId);
+      const integrityEntries = caseIntegrityByCase.get(caseId) || [];
+      const latestEntry = integrityEntries.length ? integrityEntries[integrityEntries.length - 1] : null;
+
+      res.json({
+        caseAssignment,
+        profile: detail?.profile || null,
+        fragments: detail?.fragments || [],
+        metadata: detail?.metadata || {},
+        integrity: {
+          entryCount: integrityEntries.length,
+          latestHash: latestEntry?.currentHash || null,
+          latestAt: latestEntry?.createdAt || null,
+        },
+      });
+    } catch (error) {
+      console.error("victim case-overview failed", error);
+      res.status(500).json({ error: "Failed to load victim case overview" });
     }
   });
 
@@ -1609,6 +2039,74 @@ async function startServer() {
   });
 
   /**
+   * POST /api/admin/create-case
+   * Creates a case directly from admin portal when mobile/onboarding flow has not yet provisioned one.
+   */
+  app.post("/api/admin/create-case", requireAdminSession, (req, res) => {
+    try {
+      const adminSession = res.locals.adminSession as { email: string };
+      const victimUniqueId = String(req.body?.victimUniqueId || "").trim();
+      const email = String(req.body?.email || "").trim() || undefined;
+      const displayName = String(req.body?.displayName || "").trim() || undefined;
+
+      if (!victimUniqueId) {
+        return res.status(400).json({ error: "victimUniqueId is required" });
+      }
+
+      const existingCaseId = victimCaseMap.get(victimUniqueId);
+      if (existingCaseId && caseAssignments.has(existingCaseId)) {
+        return res.status(200).json({
+          success: true,
+          isNew: false,
+          caseAssignment: caseAssignments.get(existingCaseId),
+          message: `Victim already mapped to case ${existingCaseId}`,
+        });
+      }
+
+      const newAssignment = createCaseAssignment(victimUniqueId, adminSession.email);
+      caseAssignments.set(newAssignment.caseId, newAssignment);
+      victimCaseMap.set(victimUniqueId, newAssignment.caseId);
+
+      victimDetailsByCase.set(newAssignment.caseId, {
+        profile: {
+          victimUniqueId,
+          email,
+          displayName,
+          updatedAt: new Date().toISOString(),
+        },
+        fragments: [],
+        metadata: {
+          source: "admin-portal",
+          createdBy: adminSession.email,
+        },
+      });
+
+      appendIntegrityEntry({
+        caseId: newAssignment.caseId,
+        actorId: adminSession.email,
+        payloadType: "victim_profile",
+        payload: {
+          victimUniqueId,
+          email,
+          displayName,
+        },
+      });
+
+      persistCaseState();
+
+      res.json({
+        success: true,
+        isNew: true,
+        caseAssignment: newAssignment,
+        message: `Created case ${newAssignment.caseNumber} for ${victimUniqueId}`,
+      });
+    } catch (error) {
+      console.error("admin create-case failed", error);
+      res.status(500).json({ error: "Failed to create case" });
+    }
+  });
+
+  /**
    * POST /api/admin/designate-officer
    * Admin ONLY: Designate an officer to a case
    * This is the SOURCE OF TRUTH for officer access
@@ -1657,6 +2155,7 @@ async function startServer() {
       });
 
       officerDesignations.push(designation);
+      persistCaseState();
 
       logAuditEvent(
         buildAuditEvent({
@@ -1705,6 +2204,7 @@ async function startServer() {
       }
 
       designation.status = "revoked";
+      persistCaseState();
 
       res.json({
         success: true,
@@ -1738,6 +2238,14 @@ async function startServer() {
         );
 
         const detail = victimDetailsByCase.get(caseItem.caseId);
+        const integrityEntries = caseIntegrityByCase.get(caseItem.caseId) || [];
+        const latestIntegrityHash = integrityEntries.length
+          ? integrityEntries[integrityEntries.length - 1].currentHash
+          : null;
+        const latestFragmentPreview = detail?.fragments?.length
+          ? String(detail.fragments[detail.fragments.length - 1] || "").slice(0, 180)
+          : null;
+
         return {
           ...caseItem,
           assignedTo: activeDesignations.map((d) => ({
@@ -1750,6 +2258,15 @@ async function startServer() {
           isAssigned: activeDesignations.length > 0,
           victimProfileUpdatedAt: detail?.profile.updatedAt || null,
           fragmentCount: detail?.fragments.length || 0,
+          victimDisplayName: detail?.profile.displayName || null,
+          victimEmail: detail?.profile.email || null,
+          victimPhone: detail?.profile.phone || null,
+          emergencyContact: detail?.profile.emergencyContact || null,
+          incidentSummary: detail?.profile.incidentSummary || null,
+          latestFragmentPreview,
+          latestIntegrityHash,
+          integrityEntryCount: integrityEntries.length,
+          lastUpdateSource: String(detail?.metadata?.source || "unknown"),
         };
       });
 
@@ -1959,7 +2476,7 @@ async function startServer() {
    * GET /api/case/:caseId/details
    * Fetch case details - only for designated officers or admins
    */
-  app.get("/api/case/:caseId/details", (req, res) => {
+  app.get("/api/case/:caseId/details", async (req, res) => {
     try {
       const caseId = String(req.params.caseId || "").trim();
       const officerId = String(req.query.officerId || "").trim();
@@ -1991,6 +2508,14 @@ async function startServer() {
       }
 
       const victimPayload = victimDetailsByCase.get(caseId);
+      const fragments = (victimPayload?.fragments || [])
+        .map((fragment) => String(fragment || "").trim())
+        .filter(Boolean);
+      const caseInsight = await buildCaseInsightBundle({
+        caseId,
+        profile: victimPayload?.profile,
+        fragments,
+      });
       const integrityEntries = caseIntegrityByCase.get(caseId) || [];
       const latestIntegrityEntry = integrityEntries.length
         ? integrityEntries[integrityEntries.length - 1]
@@ -2012,8 +2537,15 @@ async function startServer() {
       res.json({
         ...caseAssignment,
         victimProfile: victimPayload?.profile || null,
-        victimFragments: victimPayload?.fragments || [],
+        victimFragments: fragments,
         metadata: victimPayload?.metadata || {},
+        intelligence: {
+          legalSuggestions: caseInsight.legalSuggestions,
+          contradictionRisks: caseInsight.contradictionRisks,
+          evidenceLeads: caseInsight.evidenceLeads,
+          fakeVictimAssessment: caseInsight.fakeVictimAssessment,
+          mlPredictions: caseInsight.mlPredictions,
+        },
         integrity: {
           totalEntries: integrityEntries.length,
           latestHash: latestIntegrityEntry?.currentHash || null,
@@ -2023,6 +2555,172 @@ async function startServer() {
     } catch (error) {
       console.error("get case details failed", error);
       res.status(500).json({ error: "Failed to retrieve case details" });
+    }
+  });
+
+  /**
+   * GET /api/case/:caseId/verify-integrity
+   * Officer one-click integrity verification with per-batch proof summary.
+   */
+  app.get("/api/case/:caseId/verify-integrity", (req, res) => {
+    try {
+      const caseId = String(req.params.caseId || "").trim();
+      const officerId = String(req.query.officerId || "").trim();
+
+      if (!caseId || !officerId) {
+        return res.status(400).json({ error: "caseId and officerId query param required" });
+      }
+
+      const isDesignated = officerDesignations.some(
+        (d) =>
+          d.caseId === caseId &&
+          d.officerId === officerId &&
+          d.status === "active" &&
+          (!d.expiresAt || new Date(d.expiresAt) > new Date())
+      );
+
+      if (!isDesignated) {
+        return res.status(403).json({
+          error: `Officer ${officerId} is not designated for case ${caseId}`,
+        });
+      }
+
+      const caseAssignment = caseAssignments.get(caseId);
+      if (!caseAssignment) {
+        return res.status(404).json({ error: `Case ${caseId} not found` });
+      }
+
+      const victimPayload = victimDetailsByCase.get(caseId);
+      const fragments = (victimPayload?.fragments || [])
+        .map((fragment) => String(fragment || "").trim())
+        .filter(Boolean);
+
+      const integrityEntries = caseIntegrityByCase.get(caseId) || [];
+      const chainChecks = integrityEntries.map((entry, index) => {
+        const expectedPrev = index === 0 ? "GENESIS" : integrityEntries[index - 1].currentHash;
+        return {
+          entryId: entry.entryId,
+          payloadType: entry.payloadType,
+          createdAt: entry.createdAt,
+          expectedPrevHash: expectedPrev,
+          actualPrevHash: entry.prevHash,
+          linked: expectedPrev === entry.prevHash,
+        };
+      });
+
+      const chainValid = chainChecks.every((check) => check.linked);
+      const latestHash = integrityEntries.length ? integrityEntries[integrityEntries.length - 1].currentHash : "GENESIS";
+      const profileDigest = sha256Hex(JSON.stringify(victimPayload?.profile || {}));
+      const fragmentsDigest = sha256Hex(JSON.stringify(fragments));
+
+      let queueEntries: Array<Record<string, unknown>> = [];
+      try {
+        const queueRaw = fs.existsSync(hashQueuePath) ? fs.readFileSync(hashQueuePath, "utf8") : "[]";
+        const parsed = JSON.parse(queueRaw || "[]");
+        queueEntries = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        queueEntries = [];
+      }
+
+      const caseQueueEntries = queueEntries.filter((item) => String(item.caseId || "") === caseId);
+      const profileAnchored = caseQueueEntries.some((item) => String(item.metadataHash || "") === profileDigest);
+      const fragmentsAnchored = caseQueueEntries.some((item) => String(item.blobHash || "") === fragmentsDigest);
+
+      const testimonyBuckets: Record<"writing" | "voice" | "drawing" | "upload" | "other", string[]> = {
+        writing: [],
+        voice: [],
+        drawing: [],
+        upload: [],
+        other: [],
+      };
+
+      for (const fragment of fragments) {
+        const match = fragment.match(/^\[([^\]]+)\]\s*(.*)$/i);
+        const tag = String(match?.[1] || "").toLowerCase();
+        const body = String(match?.[2] || fragment).trim() || fragment;
+
+        if (tag.includes("voice")) {
+          testimonyBuckets.voice.push(body);
+        } else if (tag.includes("draw")) {
+          testimonyBuckets.drawing.push(body);
+        } else if (tag.includes("upload")) {
+          testimonyBuckets.upload.push(body);
+        } else if (
+          tag.includes("text") ||
+          tag.includes("write") ||
+          tag.includes("case-summary") ||
+          tag.includes("dashboard-case-brief")
+        ) {
+          testimonyBuckets.writing.push(body);
+        } else {
+          testimonyBuckets.other.push(fragment);
+        }
+      }
+
+      const batchProofs = (Object.keys(testimonyBuckets) as Array<keyof typeof testimonyBuckets>).map((batchType) => {
+        const items = testimonyBuckets[batchType];
+        const batchHash = sha256Hex(JSON.stringify(items));
+        const reasons: string[] = [];
+
+        if (!items.length) {
+          reasons.push("No testimony in this batch yet");
+        }
+        if (!chainValid) {
+          reasons.push("Integrity chain link mismatch detected");
+        }
+        if (!fragmentsAnchored) {
+          reasons.push("Current fragment digest is not yet present in anchor queue");
+        }
+
+        return {
+          batchType,
+          itemCount: items.length,
+          batchHash,
+          pass: items.length > 0 && chainValid && fragmentsAnchored,
+          reasons,
+        };
+      });
+
+      const ctx = res.locals.auditContext;
+      logAuditEvent(
+        buildAuditEvent({
+          requestId: ctx.requestId,
+          action: "case.details-fetched",
+          actorId: officerId,
+          role: "police",
+          resource: req.path,
+          success: true,
+          details: {
+            caseId,
+            chainValid,
+            profileAnchored,
+            fragmentsAnchored,
+          },
+        })
+      );
+
+      res.json({
+        caseId,
+        caseNumber: caseAssignment.caseNumber,
+        officerId,
+        verification: {
+          chainValid,
+          totalEntries: integrityEntries.length,
+          latestHash,
+          profileDigest,
+          fragmentsDigest,
+          anchorEvidence: {
+            queueEntriesForCase: caseQueueEntries.length,
+            profileAnchored,
+            fragmentsAnchored,
+          },
+          chainChecks,
+          batchProofs,
+        },
+      });
+    } catch (error) {
+      console.error("verify-integrity failed", error);
+      res.status(500).json({ error: "Failed to verify case integrity" });
     }
   });
 

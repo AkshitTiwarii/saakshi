@@ -59,6 +59,29 @@ type DetailedCase = {
   };
 };
 
+function summarizeTestimonyBuckets(fragments: string[] = []) {
+  const counts = {
+    writing: 0,
+    voice: 0,
+    drawing: 0,
+    upload: 0,
+    other: 0,
+  };
+
+  for (const fragment of fragments) {
+    const raw = String(fragment || '').trim().toLowerCase();
+    const tag = raw.match(/^\[([^\]]+)\]/)?.[1] || '';
+
+    if (tag.includes('voice')) counts.voice += 1;
+    else if (tag.includes('draw')) counts.drawing += 1;
+    else if (tag.includes('upload')) counts.upload += 1;
+    else if (tag.includes('write') || tag.includes('text') || tag.includes('case-summary') || tag.includes('dashboard-case-brief')) counts.writing += 1;
+    else counts.other += 1;
+  }
+
+  return counts;
+}
+
 export function OfficerPortalV2() {
   const navigate = useNavigate();
   const [officerId, setOfficerId] = useState('OFF-IND-221');
@@ -368,6 +391,15 @@ export function OfficerPortalV2() {
                     <div>
                       <span className="font-semibold">Fragments:</span> {caseDetails?.victimFragments?.length || 0}
                     </div>
+                    {caseDetails?.victimFragments && (
+                      <div>
+                        <span className="font-semibold">Testimony Mix:</span>{' '}
+                        {(() => {
+                          const c = summarizeTestimonyBuckets(caseDetails.victimFragments || []);
+                          return `write ${c.writing}, voice ${c.voice}, draw ${c.drawing}, upload ${c.upload}, other ${c.other}`;
+                        })()}
+                      </div>
+                    )}
                     {caseDetails?.integrity?.latestHash && (
                       <div>
                         <span className="font-semibold">Integrity Hash:</span>{' '}

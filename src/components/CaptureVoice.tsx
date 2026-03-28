@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
+  useUser,
+} from '@clerk/clerk-react';
+import {
   Mic, 
   Square, 
   ArrowLeft, 
@@ -12,13 +15,13 @@ import {
   Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { auth, db } from '../firebase';
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { classifyFragment } from '../services/geminiService.ts';
+import { resolveCanonicalVictimIdentity, saveVictimWebCapture } from '../services/canonicalCaseClient';
 import { SuccessFeedback } from './SuccessFeedback';
 
 export const CaptureVoice = () => {
   const navigate = useNavigate();
+  const { user } = useUser();
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -103,14 +106,28 @@ export const CaptureVoice = () => {
     try {
       const finalTranscript = transcript || "No audio captured";
       const result = await classifyFragment(finalTranscript);
-      
-      await addDoc(collection(db, 'fragments'), {
-        uid: auth.currentUser?.uid,
-        content: finalTranscript,
-        type: 'voice',
-        classification: result,
-        geoTag: locationData,
-        timestamp: Timestamp.now()
+
+      const identity = resolveCanonicalVictimIdentity({
+        clerkId: user?.id,
+        email: user?.primaryEmailAddress?.emailAddress,
+        displayName: user?.fullName,
+      });
+
+      const locationSummary = locationData
+        ? `lat:${locationData.lat.toFixed(5)}, lng:${locationData.lng.toFixed(5)}`
+        : 'location-unavailable';
+
+      await saveVictimWebCapture({
+        victimUniqueId: identity.victimUniqueId,
+        email: identity.email,
+        displayName: identity.displayName,
+        incidentSummary: finalTranscript,
+        fragments: [
+          `[VOICE] ${finalTranscript}`,
+          `[VOICE_CLASSIFICATION] ${JSON.stringify(result)}`,
+          `[VOICE_LOCATION] ${locationSummary}`,
+        ],
+        source: 'web-voice-capture',
       });
 
       setClassification(result);

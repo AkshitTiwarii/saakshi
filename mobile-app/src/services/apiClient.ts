@@ -1,4 +1,12 @@
 import { Platform } from "react-native";
+import {
+  appendLocalCaseFragments,
+  getCaseLocalSnapshot,
+  getDraftValue,
+  getStoredSession,
+  setDraftValue,
+  setStoredSession,
+} from "./localVault";
 
 const BASE_URL = Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 const REQUEST_TIMEOUT_MS = 12000;
@@ -93,6 +101,7 @@ type VictimSession = {
 };
 
 let victimSession: VictimSession | null = null;
+let victimSessionHydrated = false;
 
 const DEFAULT_HEADERS = {
   "Content-Type": "application/json",
@@ -145,10 +154,41 @@ export function getHealth() {
 
 export function setVictimSession(session: VictimSession) {
   victimSession = session;
+  void setStoredSession(session);
 }
 
 export function getVictimSession() {
   return victimSession;
+}
+
+export async function hydrateVictimSessionFromLocal() {
+  if (victimSessionHydrated) {
+    return victimSession;
+  }
+
+  victimSessionHydrated = true;
+  const stored = await getStoredSession();
+  if (stored) {
+    victimSession = stored;
+  }
+  return victimSession;
+}
+
+export function isCloudSyncEnabled() {
+  return String((globalThis as any)?.process?.env?.EXPO_PUBLIC_ENABLE_CLOUD_SYNC || "false") === "true";
+}
+
+export async function saveScreenDraft(key: string, value: string) {
+  await setDraftValue(key, value);
+}
+
+export async function loadScreenDraft(key: string) {
+  return getDraftValue(key);
+}
+
+export async function getLocalCaseCacheForCurrentSession() {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return getCaseLocalSnapshot(caseId);
 }
 
 export type VoiceAssistantMode = "neutral" | "strict" | "supportive_lawyer";
@@ -249,7 +289,7 @@ export async function registerVictimFromIdentity(params: {
   }
 }
 
-export function saveVictimDetails(payload: {
+export async function saveVictimDetails(payload: {
   profile: {
     email?: string;
     displayName?: string;
@@ -259,23 +299,71 @@ export function saveVictimDetails(payload: {
   };
   fragments?: string[];
   source?: string;
+  forceCloudSync?: boolean;
 }) {
   if (!victimSession) {
     throw new Error("Victim session not initialized. Complete Google onboarding first.");
   }
-  return request<{
-    success: boolean;
-    integrity: { latestHash: string; profileHash: string; previousHash: string };
-  }>("/api/victim/save-details", {
-    method: "POST",
-    body: JSON.stringify({
-      caseId: victimSession.caseId,
-      victimUniqueId: victimSession.victimUniqueId,
-      profile: payload.profile,
-      fragments: payload.fragments || [],
-      source: payload.source || "mobile-app",
-    }),
+
+  const source = payload.source || "mobile-app";
+  const localIntegrity = await appendLocalCaseFragments({
+    caseId: victimSession.caseId,
+    source,
+    fragments: payload.fragments || [],
+    markUploaded: false,
   });
+
+  const shouldCloudSync = isCloudSyncEnabled() || !!payload.forceCloudSync;
+
+  if (!shouldCloudSync) {
+    return {
+      success: true,
+      localOnly: true,
+      integrity: {
+        latestHash: localIntegrity.latestHash,
+        profileHash: localIntegrity.profileHash,
+        previousHash: localIntegrity.previousHash,
+      },
+    };
+  }
+
+  try {
+    const remote = await request<{
+      success: boolean;
+      integrity: { latestHash: string; profileHash: string; previousHash: string };
+    }>("/api/victim/save-details", {
+      method: "POST",
+      body: JSON.stringify({
+        caseId: victimSession.caseId,
+        victimUniqueId: victimSession.victimUniqueId,
+        profile: payload.profile,
+        fragments: payload.fragments || [],
+        source,
+      }),
+    });
+
+    await appendLocalCaseFragments({
+      caseId: victimSession.caseId,
+      source: `${source}-cloud-ack`,
+      fragments: [],
+      markUploaded: true,
+    });
+
+    return {
+      ...remote,
+      localOnly: false,
+    };
+  } catch {
+    return {
+      success: true,
+      localOnly: true,
+      integrity: {
+        latestHash: localIntegrity.latestHash,
+        profileHash: localIntegrity.profileHash,
+        previousHash: localIntegrity.previousHash,
+      },
+    };
+  }
 }
 
 export function getConsentPolicies() {
@@ -359,11 +447,7 @@ export function transcribeAudioForCurrentCase(params: {
       mimeType: params.mimeType,
       languageCode: params.languageCode || "en-IN",
     }),
-  }, 25000).catch(() => ({
-    provider: "local-fallback",
-    transcript: "",
-    confidence: 0,
-  }));
+  }, 25000);
 }
 
 export function searchEvidence(caseId: string, query: string) {
@@ -441,28 +525,89 @@ export function getFakeVictimAssessmentForCurrentCase() {
 }
 
 export function exportCaseReportForCurrentCase(params?: { audience?: ReportExportAudience; officerId?: string }) {
+  if (!victimSession) {
+    throw new Error("Victim session not initialized. Complete onboarding first.");
+  }
+
   const caseId = victimSession?.caseId || "demo-case-001";
   const audience = params?.audience || "victim";
   const officerId = params?.officerId;
   const victimUniqueId = victimSession?.victimUniqueId || "";
 
-  return request<ReportExportResult>("/api/report/export", {
-    method: "POST",
-    headers: {
-      "x-case-id": caseId,
-      "x-user-role": audience === "officer" ? "officer" : DEFAULT_HEADERS["x-user-role"],
-      "x-user-id": audience === "officer" ? officerId || "officer-user" : DEFAULT_HEADERS["x-user-id"],
-    },
-    body: JSON.stringify({
-      caseId,
-      audience,
-      officerId,
-      victimUniqueId,
-    }),
-  }).then((result) => ({
-    ...result,
-    downloadUrl: `${BASE_URL}${result.downloadUrl}`,
-  }));
+  const runExport = (currentCaseId: string, currentVictimUniqueId: string) =>
+    request<ReportExportResult>("/api/report/export", {
+      method: "POST",
+      headers: {
+        "x-case-id": currentCaseId,
+        "x-user-role": audience === "officer" ? "officer" : DEFAULT_HEADERS["x-user-role"],
+        "x-user-id": audience === "officer" ? officerId || "officer-user" : DEFAULT_HEADERS["x-user-id"],
+      },
+      body: JSON.stringify({
+        caseId: currentCaseId,
+        audience,
+        officerId,
+        victimUniqueId: currentVictimUniqueId,
+      }),
+    }).then((result) => ({
+      ...result,
+      downloadUrl: `${BASE_URL}${result.downloadUrl}`,
+    }));
+
+  const recoverLocalCaseAndExport = async () => {
+    const snapshotBeforeRecovery = victimSession;
+    if (!snapshotBeforeRecovery) {
+      throw new Error("Case session unavailable for export.");
+    }
+
+    const localCaseId = snapshotBeforeRecovery.caseId;
+    const localCache = await getCaseLocalSnapshot(localCaseId);
+
+    await registerVictimFromIdentity({
+      victimUniqueId: snapshotBeforeRecovery.victimUniqueId,
+      email: snapshotBeforeRecovery.email,
+      displayName: snapshotBeforeRecovery.displayName,
+    });
+
+    const refreshedSession = victimSession;
+    if (!refreshedSession) {
+      throw new Error("Could not recover remote case session for export.");
+    }
+
+    if (localCache.fragments.length > 0) {
+      await request<{ success: boolean }>("/api/victim/save-details", {
+        method: "POST",
+        body: JSON.stringify({
+          caseId: refreshedSession.caseId,
+          victimUniqueId: refreshedSession.victimUniqueId,
+          profile: {
+            email: refreshedSession.email,
+            displayName: refreshedSession.displayName,
+          },
+          fragments: localCache.fragments,
+          source: "mobile-export-recovery",
+        }),
+      });
+    }
+
+    return runExport(refreshedSession.caseId, refreshedSession.victimUniqueId);
+  };
+
+  return runExport(caseId, victimUniqueId).catch(async (error) => {
+    const message = (error as Error)?.message || "";
+    const shouldRecover =
+      audience === "victim" &&
+      (caseId.startsWith("local-case-") || /not found/i.test(message));
+
+    if (!shouldRecover) {
+      throw error;
+    }
+
+    try {
+      return await recoverLocalCaseAndExport();
+    } catch {
+      throw new Error("Export failed because your case is only local. Reconnect internet, open the app once, then retry export.");
+    }
+  });
 }
 
 export function predictLegalForCurrentCase(text: string) {

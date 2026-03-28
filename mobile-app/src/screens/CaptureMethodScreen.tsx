@@ -82,7 +82,8 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   scroll: {
-    paddingBottom: 124,
+    paddingBottom: 182,
+    flexGrow: 1,
     gap: 14,
   },
   header: {

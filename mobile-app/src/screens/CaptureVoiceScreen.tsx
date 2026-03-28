@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Audio } from "expo-av";
@@ -9,7 +9,10 @@ import {
   analyzeVoiceWithGoogleNlp,
   classifyFragmentForCurrentCase,
   generateModeAwareCoachReply,
+  loadScreenDraft,
   persistVoiceChatMessage,
+  saveScreenDraft,
+  saveVictimDetails,
   transcribeAudioForCurrentCase,
 } from "../services/apiClient";
 import { BottomNav } from "../components/BottomNav";
@@ -20,10 +23,10 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
   android: {
     extension: ".3gp",
     outputFormat: Audio.AndroidOutputFormat.THREE_GPP,
-    audioEncoder: Audio.AndroidAudioEncoder.AMR_NB,
-    sampleRate: 8000,
+    audioEncoder: Audio.AndroidAudioEncoder.AMR_WB,
+    sampleRate: 16000,
     numberOfChannels: 1,
-    bitRate: 12200,
+    bitRate: 23850,
   },
   ios: {
     extension: ".caf",
@@ -50,6 +53,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [recordingDurationMs, setRecordingDurationMs] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [chatInput, setChatInput] = useState("");
   const [chat, setChat] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const [nlpSummary, setNlpSummary] = useState<{
@@ -59,6 +63,26 @@ export function CaptureVoiceScreen({ navigation }: Props) {
     location: string[];
     people: string[];
   } | null>(null);
+
+  useEffect(() => {
+    Promise.all([loadScreenDraft("voice.transcript"), loadScreenDraft("voice.chat")])
+      .then(([savedTranscript, savedChat]) => {
+        if (savedTranscript) setTranscript(savedTranscript);
+        if (savedChat) {
+          try {
+            setChat(JSON.parse(savedChat));
+          } catch {
+            setChat([]);
+          }
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const onChangeTranscript = (value: string) => {
+    setTranscript(value);
+    void saveScreenDraft("voice.transcript", value);
+  };
 
   const processVoice = async () => {
     if (!transcript.trim()) return;
@@ -92,6 +116,37 @@ export function CaptureVoiceScreen({ navigation }: Props) {
       await persistVoiceChatMessage({ role: "user", mode: "neutral", text: transcript });
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const submitVoiceTestimony = async () => {
+    const clean = transcript.trim();
+    if (!clean) {
+      setStatus("Transcribe or type a transcript first, then submit.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const saveResult = await saveVictimDetails({
+        profile: {},
+        fragments: [
+          `[voice] ${clean}`,
+          `[voice-meta] durationMs=${recordingDurationMs}`,
+        ],
+        source: "mobile-capture-voice",
+      }).catch(() => null);
+
+      const hashText = saveResult?.integrity?.latestHash
+        ? ` Hash ${saveResult.integrity.latestHash.slice(0, 12)}...`
+        : "";
+      setStatus(
+        saveResult?.localOnly
+          ? `Voice testimony saved locally.${hashText}`
+          : `Voice testimony synced to case.${hashText}`
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -155,7 +210,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
       const mimeType = recordingUri.endsWith(".3gp")
         ? "audio/3gpp"
         : recordingUri.endsWith(".caf")
-        ? "audio/wav"
+        ? "audio/x-caf"
         : "audio/webm";
 
       const stt = await transcribeAudioForCurrentCase({
@@ -166,12 +221,20 @@ export function CaptureVoiceScreen({ navigation }: Props) {
 
       if (stt.transcript.trim()) {
         setTranscript(stt.transcript.trim());
+        void saveScreenDraft("voice.transcript", stt.transcript.trim());
         setStatus(`Transcribed via ${stt.provider}. Review and process.`);
       } else {
-        setStatus("Transcription unavailable right now. You can type transcript manually.");
+        setStatus(
+          `No speech could be extracted (${stt.provider}, conf ${Math.round((stt.confidence || 0) * 100)}%). Speak closer to mic and retry.`
+        );
       }
-    } catch {
-      setStatus("Transcription failed. You can still paste or type transcript.");
+    } catch (error) {
+      const message = String((error as Error)?.message || "").trim();
+      setStatus(
+        message
+          ? `Transcription failed: ${message}`
+          : "Transcription failed. You can still paste or type transcript."
+      );
     } finally {
       setTranscribing(false);
     }
@@ -181,17 +244,33 @@ export function CaptureVoiceScreen({ navigation }: Props) {
     if (!chatInput.trim()) return;
     const userMessage = chatInput.trim();
     setChatInput("");
-    setChat((prev) => [...prev, { role: "user", text: userMessage }]);
+    setChat((prev) => {
+      const next = [...prev, { role: "user" as const, text: userMessage }];
+      void saveScreenDraft("voice.chat", JSON.stringify(next));
+      return next;
+    });
 
-    const reply = await generateModeAwareCoachReply({ mode: "neutral", text: userMessage });
-    setChat((prev) => [...prev, { role: "assistant", text: reply }]);
-    await persistVoiceChatMessage({ role: "user", mode: "neutral", text: userMessage });
-    await persistVoiceChatMessage({ role: "assistant", mode: "neutral", text: reply });
+    try {
+      const reply = await generateModeAwareCoachReply({ mode: "neutral", text: userMessage });
+      setChat((prev) => {
+        const next = [...prev, { role: "assistant" as const, text: reply }];
+        void saveScreenDraft("voice.chat", JSON.stringify(next));
+        return next;
+      });
+      await persistVoiceChatMessage({ role: "user", mode: "neutral", text: userMessage });
+      await persistVoiceChatMessage({ role: "assistant", mode: "neutral", text: reply });
+    } catch {
+      setChat((prev) => {
+        const next = [...prev, { role: "assistant" as const, text: "Assistant unavailable right now. Your chat is saved locally." }];
+        void saveScreenDraft("voice.chat", JSON.stringify(next));
+        return next;
+      });
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Voice Capture</Text>
         <View style={styles.pill}><Text style={styles.pillText}>Trauma-safe mode: no pressure timing</Text></View>
 
@@ -220,7 +299,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
 
         <TextInput
           value={transcript}
-          onChangeText={setTranscript}
+          onChangeText={onChangeTranscript}
           placeholder="Paste or type transcript from voice input"
           placeholderTextColor={colors.mutedInk}
           style={styles.input}
@@ -228,6 +307,13 @@ export function CaptureVoiceScreen({ navigation }: Props) {
         />
         <Pressable style={[styles.button, processing ? styles.disabledButton : null]} onPress={processVoice} disabled={processing || transcribing}>
           <Text style={styles.buttonLabel}>{processing ? "Processing..." : "Process Voice to Timeline"}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.buttonSecondary, (!transcript.trim() || submitting) ? styles.disabledButton : null]}
+          onPress={submitVoiceTestimony}
+          disabled={!transcript.trim() || submitting}
+        >
+          <Text style={styles.buttonSecondaryLabel}>{submitting ? "Submitting..." : "Submit Voice Testimony"}</Text>
         </Pressable>
         <Text style={styles.status}>{status}</Text>
 
@@ -269,7 +355,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 20, paddingTop: 20 },
-  scroll: { gap: 10, paddingBottom: 120 },
+  scroll: { gap: 10, paddingBottom: 172, flexGrow: 1 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
   pill: { alignSelf: "flex-start", backgroundColor: colors.accentSoft, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10 },
   pillText: { color: colors.accent, fontSize: 12, fontWeight: "700" },
@@ -302,6 +388,13 @@ const styles = StyleSheet.create({
   },
   input: { backgroundColor: colors.white, borderRadius: 16, padding: 14, minHeight: 160, color: colors.ink, textAlignVertical: "top" },
   button: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 14, alignItems: "center" },
+  buttonSecondary: {
+    backgroundColor: "#1F3B63",
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  buttonSecondaryLabel: { color: colors.white, fontWeight: "700", fontSize: 15 },
   buttonLabel: { color: colors.white, fontWeight: "700", fontSize: 16 },
   status: { color: colors.mutedInk, fontSize: 13, lineHeight: 19 },
   nlpCard: {
