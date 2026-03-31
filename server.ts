@@ -351,6 +351,12 @@ function buildContradictionRisks(fragments: string[]) {
   return risks;
 }
 
+function isGeminiQuotaError(error: unknown): boolean {
+  const err = error as { status?: number; message?: string };
+  const message = String(err?.message || "").toLowerCase();
+  return Number(err?.status || 0) === 429 || message.includes("rate_limit_exceeded") || message.includes("quota exceeded");
+}
+
 function buildFakeVictimAssessment(fragments: string[]) {
   const text = fragments.join(" ").toLowerCase();
   const sensoryTerms = ["smell", "sound", "noise", "rain", "light", "crowd", "voice", "touch"];
@@ -986,6 +992,28 @@ async function startServer() {
       res.json(JSON.parse(response.text));
     } catch (error) {
       console.error("classify-fragment failed", error);
+      if (isGeminiQuotaError(error)) {
+        const content = String(req.body?.content || "").trim().toLowerCase();
+        const time = /\b(today|yesterday|night|morning|evening|\d{1,2}:\d{2})\b/.test(content)
+          ? "time clue detected"
+          : "relative memory clue";
+        const location = /\b(road|street|station|home|office|school|market|bus)\b/.test(content)
+          ? "location clue detected"
+          : "not yet available";
+        const emotion = /\b(scared|afraid|panic|cry|shaking|hurt|angry|fear)\b/.test(content)
+          ? "distressed"
+          : "steady";
+        const sensory = ["voice tone", "environment sound"];
+
+        return res.json({
+          time,
+          location,
+          sensory,
+          emotion,
+          provider: "local-fallback-quota",
+        });
+      }
+
       res.status(500).json({ error: "AI classification failed" });
     }
   });
@@ -1257,10 +1285,10 @@ async function startServer() {
 
   app.post("/api/voice/transcribe", requireConsentForPurpose("analysis"), async (req, res) => {
     try {
-      if (!googleSpeechClient) {
+      if (!googleSpeechClient && !ai) {
         return res.status(503).json({
-          error: "Google Speech is not configured on server",
-          hint: "Set GOOGLE_APPLICATION_CREDENTIALS on backend host",
+          error: "Voice transcription is not configured on server",
+          hint: "Set GOOGLE_APPLICATION_CREDENTIALS and/or GEMINI_API_KEY on backend host",
         });
       }
 
@@ -1268,96 +1296,250 @@ async function startServer() {
       const audioBase64 = String(req.body?.audioBase64 || "").trim();
       const mimeType = String(req.body?.mimeType || "audio/webm").toLowerCase();
       const languageCode = String(req.body?.languageCode || "en-IN").trim() || "en-IN";
+      const durationMsRaw = Number(req.body?.durationMs ?? 0);
+      const durationMs = Number.isFinite(durationMsRaw) && durationMsRaw > 0 ? durationMsRaw : 0;
 
       if (!caseId || !audioBase64) {
         return res.status(400).json({ error: "caseId and audioBase64 are required" });
       }
 
+      const mimeCandidates = uniqueStrings([
+        mimeType,
+        ...(mimeType.includes("3gpp") || mimeType.includes("amr")
+          ? ["audio/3gpp", "audio/amr", "audio/mp4"]
+          : []),
+        ...(mimeType.includes("webm") ? ["audio/webm", "audio/webm;codecs=opus"] : []),
+      ]);
+
+      const requestedLang = languageCode.toLowerCase();
+      const requestedLangBase = requestedLang.split("-")[0] || "en";
+      const looksLikeWrongLanguage = (text: string) => {
+        if (!text) return false;
+        // Guard English requests against high-diacritic outputs often caused by wrong-language fallback.
+        if (requestedLangBase === "en") {
+          const latinExtendedChars = text.match(/[\u00C0-\u024F]/g) || [];
+          return latinExtendedChars.length >= 3;
+        }
+        return false;
+      };
+
+      const looksLikeDurationMismatch = (text: string) => {
+        if (!text || durationMs <= 0) return false;
+        const words = text.split(/\s+/).filter(Boolean).length;
+        const seconds = durationMs / 1000;
+        if (seconds <= 0.5) return words > 5;
+        const wordsPerMinute = (words * 60) / seconds;
+        // Guard against fabricated long paragraphs for short clips.
+        return wordsPerMinute > 230;
+      };
+
+      const tryGeminiTranscription = async () => {
+        if (!ai) return null;
+        const geminiModels = ["gemini-3.1-pro-preview", "gemini-3-flash-preview"];
+
+        for (const model of geminiModels) {
+          for (const mime of mimeCandidates) {
+            try {
+              const geminiResponse = await ai.models.generateContent({
+                model,
+                contents: {
+                  parts: [
+                    {
+                      inlineData: {
+                        data: audioBase64,
+                        mimeType: mime,
+                      },
+                    },
+                    {
+                      text: `Transcribe this spoken audio verbatim in ${languageCode}. Do not translate. If speech is mostly in another language or unclear, return exactly: [NO_MATCH].`,
+                    },
+                  ],
+                },
+              });
+
+              const geminiText = String(geminiResponse.text || "").trim();
+              if (
+                geminiText &&
+                geminiText !== "[NO_MATCH]" &&
+                !looksLikeWrongLanguage(geminiText) &&
+                !looksLikeDurationMismatch(geminiText)
+              ) {
+                return { transcript: geminiText, provider: `gemini-audio(${model})` };
+              }
+            } catch {
+              // Try next model/mime pair.
+            }
+          }
+        }
+
+        return null;
+      };
+
       const baseConfig: {
         languageCode: string;
         enableAutomaticPunctuation: boolean;
         model: string;
+        alternativeLanguageCodes?: string[];
       } = {
         languageCode,
         enableAutomaticPunctuation: true,
         model: "latest_short",
       };
 
-      const config: {
-        languageCode: string;
-        enableAutomaticPunctuation: boolean;
-        model: string;
-        encoding?: "WEBM_OPUS" | "AMR" | "AMR_WB" | "LINEAR16";
-        sampleRateHertz?: number;
-      } = { ...baseConfig };
-
-      if (mimeType.includes("webm")) {
-        config.encoding = "WEBM_OPUS";
-        config.sampleRateHertz = 48000;
-      } else if (mimeType.includes("3gpp") || mimeType.includes("amr")) {
-        config.encoding = "AMR_WB";
-        config.sampleRateHertz = 16000;
-      } else if (mimeType.includes("wav") || mimeType.includes("pcm") || mimeType.includes("caf")) {
-        config.encoding = "LINEAR16";
-        config.sampleRateHertz = 44100;
+      const langCandidates = uniqueStrings([
+        languageCode,
+        "en-IN",
+        "hi-IN",
+        "en-US",
+      ]);
+      const alternativeLanguageCodes = langCandidates.filter((item) => item !== languageCode).slice(0, 2);
+      if (alternativeLanguageCodes.length) {
+        baseConfig.alternativeLanguageCodes = alternativeLanguageCodes;
       }
 
-      const configAttempts: Array<{
+      type SpeechEncoding = "WEBM_OPUS" | "AMR" | "AMR_WB" | "LINEAR16";
+      type SpeechAttemptConfig = {
         languageCode: string;
         enableAutomaticPunctuation: boolean;
         model: string;
-        encoding?: "WEBM_OPUS" | "AMR" | "AMR_WB" | "LINEAR16";
+        alternativeLanguageCodes?: string[];
+        encoding?: SpeechEncoding;
         sampleRateHertz?: number;
-      }> = [
-        config,
-        // Some Android devices report 3gpp but actually record wideband AMR.
-        ...(mimeType.includes("3gpp") || mimeType.includes("amr")
-          ? [
-              {
-                ...baseConfig,
-                encoding: "AMR" as const,
-                sampleRateHertz: 8000,
-              },
-            ]
-          : []),
-        baseConfig,
-      ];
+      };
+
+      const isWebm = mimeType.includes("webm");
+      const is3gppOrAmr = mimeType.includes("3gpp") || mimeType.includes("amr");
+      const isLinearPcm = mimeType.includes("wav") || mimeType.includes("pcm") || mimeType.includes("caf");
+
+      const configAttempts: SpeechAttemptConfig[] = isWebm
+        ? [
+            {
+              ...baseConfig,
+              encoding: "WEBM_OPUS",
+              sampleRateHertz: 48000,
+            },
+            {
+              ...baseConfig,
+              encoding: "WEBM_OPUS",
+              sampleRateHertz: 16000,
+            },
+            {
+              ...baseConfig,
+              model: "latest_long",
+              encoding: "WEBM_OPUS",
+              sampleRateHertz: 48000,
+            },
+            { ...baseConfig },
+          ]
+        : is3gppOrAmr
+        ? [
+            {
+              ...baseConfig,
+              model: "phone_call",
+              encoding: "AMR",
+              sampleRateHertz: 8000,
+            },
+            {
+              ...baseConfig,
+              model: "latest_long",
+              encoding: "AMR_WB",
+              sampleRateHertz: 16000,
+            },
+            {
+              ...baseConfig,
+              encoding: "AMR",
+              sampleRateHertz: 8000,
+            },
+            {
+              ...baseConfig,
+              encoding: "AMR_WB",
+              sampleRateHertz: 16000,
+            },
+            { ...baseConfig },
+          ]
+        : isLinearPcm
+        ? [
+            {
+              ...baseConfig,
+              encoding: "LINEAR16",
+              sampleRateHertz: 16000,
+            },
+            {
+              ...baseConfig,
+              model: "latest_long",
+              encoding: "LINEAR16",
+              sampleRateHertz: 44100,
+            },
+            { ...baseConfig },
+          ]
+        : [{ ...baseConfig }];
+
+      const isBadEncodingError = (value: unknown) => {
+        const error = value as { code?: number; details?: string; message?: string };
+        const text = `${String(error?.details || "")} ${String(error?.message || "")}`.toLowerCase();
+        return Number(error?.code || 0) === 3 && (text.includes("bad encoding") || text.includes("invalid recognition 'config'"));
+      };
 
       let speechRes: any | undefined;
+      let finalTranscript = "";
+      let finalConfidence = 0;
+      let usedProvider = "google-speech";
       let lastError: unknown = null;
+      let sawSuccessfulSpeechResponse = false;
 
-      for (const cfg of configAttempts) {
-        try {
-          const [response] = await googleSpeechClient.recognize({
-            config: cfg,
-            audio: {
-              content: audioBase64,
-            },
-          });
-          speechRes = response;
-          break;
-        } catch (attemptError) {
-          lastError = attemptError;
+      if (googleSpeechClient) {
+        for (const cfg of configAttempts) {
+          try {
+            const [response] = await googleSpeechClient.recognize({
+              config: cfg,
+              audio: {
+                content: audioBase64,
+              },
+            });
+            sawSuccessfulSpeechResponse = true;
+
+            const alternatives = (response.results || [])
+              .map((result) => result.alternatives?.[0])
+              .filter((alt): alt is NonNullable<typeof alt> => !!alt);
+
+            const candidateTranscript = alternatives
+              .map((alt) => String(alt.transcript || "").trim())
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+
+            const candidateConfidence = alternatives.length
+              ? alternatives.reduce((sum, alt) => sum + Number(alt.confidence || 0), 0) / alternatives.length
+              : 0;
+
+            if (candidateTranscript) {
+              speechRes = response;
+              finalTranscript = candidateTranscript;
+              finalConfidence = Number(candidateConfidence.toFixed(3));
+              break;
+            }
+          } catch (attemptError) {
+            if (isBadEncodingError(attemptError)) {
+              lastError = attemptError;
+              continue;
+            }
+            lastError = attemptError;
+          }
         }
       }
 
-      if (!speechRes) {
+      if (!speechRes && lastError && !sawSuccessfulSpeechResponse && !isBadEncodingError(lastError)) {
         throw lastError || new Error("Speech recognition failed");
       }
 
-      const best = (speechRes.results || [])
-        .map((result) => result.alternatives?.[0])
-        .filter((alt): alt is NonNullable<typeof alt> => !!alt);
-
-      const transcript = best
-        .map((alt) => String(alt.transcript || "").trim())
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
-      const confidence = best.length
-        ? best.reduce((sum, alt) => sum + Number(alt.confidence || 0), 0) / best.length
-        : 0;
+      if (!finalTranscript) {
+        const geminiResult = await tryGeminiTranscription();
+        if (geminiResult?.transcript) {
+          finalTranscript = geminiResult.transcript;
+          finalConfidence = 0.61;
+          usedProvider = googleSpeechClient ? `${usedProvider}+${geminiResult.provider}` : geminiResult.provider;
+        }
+      }
 
       const ctx = res.locals.auditContext;
       logAuditEvent(
@@ -1370,16 +1552,17 @@ async function startServer() {
           success: true,
           details: {
             caseId,
-            transcriptLength: transcript.length,
-            confidence: Number(confidence.toFixed(3)),
+            transcriptLength: finalTranscript.length,
+            confidence: Number(finalConfidence.toFixed(3)),
+            provider: usedProvider,
           },
         })
       );
 
       res.json({
-        provider: "google-speech",
-        transcript,
-        confidence: Number(confidence.toFixed(3)),
+        provider: usedProvider,
+        transcript: finalTranscript,
+        confidence: Number(finalConfidence.toFixed(3)),
       });
     } catch (error) {
       console.error("voice-transcribe failed", error);

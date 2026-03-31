@@ -169,15 +169,15 @@ export const CaptureDraw = () => {
       </AnimatePresence>
       <header className="p-6 flex items-center justify-between bg-white/80 backdrop-blur-md z-10">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate(-1)} className="text-primary">
+          <button onClick={() => navigate(-1)} className="sa-btn-ghost h-11 w-11 !p-0 text-primary" aria-label="Go back">
             <ArrowLeft size={24} />
           </button>
-          <h1 className="text-xl font-bold text-primary">Visual Memory</h1>
+          <h1 className="text-xl font-bold text-on-surface">Visual Memory Capture</h1>
         </div>
-        <button 
+        <button
           onClick={handleSave}
           disabled={isSaving}
-          className="bg-primary text-on-primary px-6 py-2 rounded-full font-bold flex items-center gap-2 shadow-md active:scale-95 transition-all disabled:opacity-50"
+          className="sa-btn-primary px-6 py-2 flex items-center gap-2"
         >
           {isSaving ? 'Saving...' : (
             <>
@@ -201,9 +201,9 @@ export const CaptureDraw = () => {
           className="w-full h-full touch-none cursor-crosshair"
         />
         
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 glass-card px-6 py-3 rounded-full border border-outline-variant/20 flex items-center gap-4 pointer-events-none">
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 sa-card px-6 py-3 rounded-full flex items-center gap-4 pointer-events-none">
           <Sparkles size={16} className="text-primary" />
-          <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Sketch the scene, layout, or symbols</span>
+          <span className="text-xs font-bold text-on-surface-variant uppercase tracking-widest">Sketch places, objects, symbols, or movement</span>
         </div>
       </main>
 

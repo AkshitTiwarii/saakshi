@@ -1,0 +1,50 @@
+:root {
+  --bg-canvas: #f7f1e7;
+  --bg-surface: #fffaf2;
+  --bg-elevated: #fff6ea;
+
+  --text-primary: #2d241d;
+  --text-secondary: #5a4b40;
+  --text-muted: #7a6a5f;
+
+  --brand-primary: #b25f47;
+  --brand-primary-strong: #924631;
+  --brand-accent: #7f9b76;
+  --brand-accent-strong: #5f7d57;
+
+  --status-success: #3f7756;
+  --status-warning: #b87d2f;
+  --status-danger: #b3433a;
+  --status-info: #4a6f89;
+
+  --border-subtle: #e5d8c7;
+  --border-strong: #cdb9a2;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --shadow-soft: 0 8px 24px rgba(63, 36, 20, 0.08);
+  --shadow-focus: 0 0 0 3px rgba(178, 95, 71, 0.35);
+
+  --font-display: "Fraunces", "Georgia", serif;
+  --font-body: "Source Sans 3", "Segoe UI", sans-serif;
+}
+
+/* Soft gradient to avoid flat, sterile backgrounds. */
+body {
+  background:
+    radial-gradient(circle at 8% -10%, rgba(178, 95, 71, 0.12), transparent 38%),
+    radial-gradient(circle at 88% 120%, rgba(127, 155, 118, 0.14), transparent 42%),
+    var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}

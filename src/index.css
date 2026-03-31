@@ -4,36 +4,39 @@
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   
-  --color-primary: #4d50c5;
-  --color-primary-dim: #4143b9;
-  --color-primary-container: #babbff;
-  --color-on-primary: #fbf7ff;
-  --color-on-primary-container: #2828a1;
+  --color-primary: #b25f47;
+  --color-primary-dim: #924631;
+  --color-primary-container: #f7d9cd;
+  --color-on-primary: #fffaf5;
+  --color-on-primary-container: #5b2314;
   
-  --color-secondary: #4d56b0;
-  --color-secondary-dim: #414aa3;
-  --color-secondary-container: #e0e0ff;
-  --color-on-secondary: #fbf8ff;
-  --color-on-secondary-container: #3f48a1;
+  --color-secondary: #7f9b76;
+  --color-secondary-dim: #5f7d57;
+  --color-secondary-container: #e9f1e5;
+  --color-on-secondary: #f8fdf6;
+  --color-on-secondary-container: #2f4a2a;
   
-  --color-tertiary: #715578;
-  --color-tertiary-dim: #65496c;
-  --color-tertiary-container: #f5d1fb;
-  --color-on-tertiary: #fff7fb;
-  --color-on-tertiary-container: #604567;
+  --color-tertiary: #6b8290;
+  --color-tertiary-dim: #4d646f;
+  --color-tertiary-container: #deedf2;
+  --color-on-tertiary: #f6fbfd;
+  --color-on-tertiary-container: #233a44;
   
-  --color-surface: #f8f9ff;
-  --color-on-surface: #2d333b;
-  --color-on-surface-variant: #5a5f68;
-  --color-surface-container-low: #f1f3fa;
-  --color-surface-container-high: #e4e8f2;
-  --color-surface-container-highest: #dee3ed;
+  --color-surface: #f7f1e7;
+  --color-on-surface: #2d241d;
+  --color-on-surface-variant: #6c5b4d;
+  --color-surface-container-low: #fff9f1;
+  --color-surface-container-high: #f3e8da;
+  --color-surface-container-highest: #eadcca;
   --color-surface-container-lowest: #ffffff;
   
-  --color-error: #ac3149;
-  --color-on-error: #fff7f7;
-  --color-error-container: #f76a80;
-  --color-on-error-container: #68001f;
+  --color-error: #b3433a;
+  --color-on-error: #fff8f7;
+  --color-error-container: #f4d7d3;
+  --color-on-error-container: #641f1a;
+
+  --color-outline: #d7c5b0;
+  --color-outline-variant: #e9dccb;
   
   --radius-lg: 2rem;
   --radius-xl: 3rem;
@@ -42,6 +45,10 @@
 @layer base {
   body {
     @apply bg-surface text-on-surface font-sans;
+    background:
+      radial-gradient(circle at 8% -10%, rgba(178, 95, 71, 0.12), transparent 36%),
+      radial-gradient(circle at 85% 115%, rgba(127, 155, 118, 0.13), transparent 42%),
+      var(--color-surface);
   }
 }
 
@@ -50,7 +57,38 @@
 }
 
 .ethereal-gradient {
-  background: radial-gradient(circle at 50% 50%, #fbf8ff 0%, #f1f3fa 100%);
+  background: radial-gradient(circle at 40% 30%, #fff7ee 0%, #f4ebdd 100%);
+}
+
+.sa-card {
+  @apply rounded-3xl border border-[var(--color-outline-variant)] bg-surface-container-low shadow-[0_16px_44px_rgba(73,37,24,0.08)];
+}
+
+.sa-btn {
+  @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-bold transition-all duration-200 active:scale-[0.98] disabled:opacity-55 disabled:cursor-not-allowed;
+}
+
+.sa-btn-primary {
+  @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-bold transition-all duration-200 active:scale-[0.98] disabled:opacity-55 disabled:cursor-not-allowed;
+  @apply bg-primary text-on-primary shadow-[0_10px_24px_rgba(146,70,49,0.28)] hover:brightness-95;
+}
+
+.sa-btn-secondary {
+  @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-bold transition-all duration-200 active:scale-[0.98] disabled:opacity-55 disabled:cursor-not-allowed;
+  @apply bg-secondary text-on-secondary shadow-[0_8px_20px_rgba(95,125,87,0.22)] hover:brightness-95;
+}
+
+.sa-btn-ghost {
+  @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-bold transition-all duration-200 active:scale-[0.98] disabled:opacity-55 disabled:cursor-not-allowed;
+  @apply border border-[var(--color-outline)] bg-white text-on-surface hover:bg-surface-container-low;
+}
+
+.sa-input {
+  @apply w-full rounded-2xl border border-[var(--color-outline)] bg-white px-4 py-3 text-on-surface placeholder:text-on-surface-variant/70 outline-none transition-shadow focus:shadow-[0_0_0_3px_rgba(178,95,71,0.24)];
+}
+
+.sa-field-label {
+  @apply mb-2 block text-xs font-bold uppercase tracking-widest text-on-surface-variant;
 }
 
 .officer-portal-bg {

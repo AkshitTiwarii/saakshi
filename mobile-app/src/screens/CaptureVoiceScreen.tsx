@@ -47,10 +47,11 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
 
 export function CaptureVoiceScreen({ navigation }: Props) {
   const [transcript, setTranscript] = useState("");
-  const [status, setStatus] = useState("Tap process when transcript is ready.");
+  const [status, setStatus] = useState("When you are ready, process your transcript.");
   const [processing, setProcessing] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  const [recordingMimeType, setRecordingMimeType] = useState<string>("audio/3gpp");
   const [recordingDurationMs, setRecordingDurationMs] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -121,8 +122,8 @@ export function CaptureVoiceScreen({ navigation }: Props) {
 
   const submitVoiceTestimony = async () => {
     const clean = transcript.trim();
-    if (!clean) {
-      setStatus("Transcribe or type a transcript first, then submit.");
+    if (!clean && !recordingUri) {
+      setStatus("Record audio or add transcript first, then submit.");
       return;
     }
 
@@ -131,8 +132,9 @@ export function CaptureVoiceScreen({ navigation }: Props) {
       const saveResult = await saveVictimDetails({
         profile: {},
         fragments: [
-          `[voice] ${clean}`,
+          `[voice] ${clean || "(audio captured; transcript pending)"}`,
           `[voice-meta] durationMs=${recordingDurationMs}`,
+          `[voice-meta] transcriptProvided=${clean ? "yes" : "no"}`,
         ],
         source: "mobile-capture-voice",
       }).catch(() => null);
@@ -168,10 +170,16 @@ export function CaptureVoiceScreen({ navigation }: Props) {
       await rec.startAsync();
       setRecording(rec);
       setRecordingUri(null);
+      setRecordingMimeType("audio/3gpp");
       setRecordingDurationMs(0);
       setStatus("Recording... Tap Stop when done.");
-    } catch {
-      setStatus("Could not start recording. You can still type transcript manually.");
+    } catch (error) {
+      const message = String((error as Error)?.message || "").trim();
+      setStatus(
+        message
+          ? `Could not start recording: ${message}`
+          : "Could not start recording. You can still type transcript manually."
+      );
     }
   };
 
@@ -207,16 +215,19 @@ export function CaptureVoiceScreen({ navigation }: Props) {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      const mimeType = recordingUri.endsWith(".3gp")
+      const mimeType = recordingUri.endsWith(".webm")
+        ? "audio/webm"
+        : recordingUri.endsWith(".3gp")
         ? "audio/3gpp"
         : recordingUri.endsWith(".caf")
         ? "audio/x-caf"
-        : "audio/webm";
+        : recordingMimeType;
 
       const stt = await transcribeAudioForCurrentCase({
         audioBase64,
         mimeType,
         languageCode: "en-IN",
+        durationMs: recordingDurationMs,
       });
 
       if (stt.transcript.trim()) {
@@ -272,7 +283,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Voice Capture</Text>
-        <View style={styles.pill}><Text style={styles.pillText}>Trauma-safe mode: no pressure timing</Text></View>
+        <View style={styles.pill}><Text style={styles.pillText}>Safe pace mode: pause whenever you need</Text></View>
 
         <View style={styles.voiceTools}>
           <Pressable
@@ -280,7 +291,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
             onPress={recording ? stopRecording : startRecording}
             disabled={processing || transcribing}
           >
-            <Text style={styles.secondaryButtonLabel}>{recording ? "Stop Recording" : "Record Voice"}</Text>
+            <Text style={styles.secondaryButtonLabel}>{recording ? "Stop Recording" : "Start Voice Recording"}</Text>
           </Pressable>
           <Pressable
             style={[styles.secondaryButton, !recordingUri ? styles.disabledButton : null]}
@@ -300,26 +311,26 @@ export function CaptureVoiceScreen({ navigation }: Props) {
         <TextInput
           value={transcript}
           onChangeText={onChangeTranscript}
-          placeholder="Paste or type transcript from voice input"
+          placeholder="Paste or type your transcript here"
           placeholderTextColor={colors.mutedInk}
           style={styles.input}
           multiline
         />
         <Pressable style={[styles.button, processing ? styles.disabledButton : null]} onPress={processVoice} disabled={processing || transcribing}>
-          <Text style={styles.buttonLabel}>{processing ? "Processing..." : "Process Voice to Timeline"}</Text>
+          <Text style={styles.buttonLabel}>{processing ? "Processing..." : "Process Voice Notes"}</Text>
         </Pressable>
         <Pressable
-          style={[styles.buttonSecondary, (!transcript.trim() || submitting) ? styles.disabledButton : null]}
+          style={[styles.buttonSecondary, ((!transcript.trim() && !recordingUri) || submitting) ? styles.disabledButton : null]}
           onPress={submitVoiceTestimony}
-          disabled={!transcript.trim() || submitting}
+          disabled={(!transcript.trim() && !recordingUri) || submitting}
         >
-          <Text style={styles.buttonSecondaryLabel}>{submitting ? "Submitting..." : "Submit Voice Testimony"}</Text>
+          <Text style={styles.buttonSecondaryLabel}>{submitting ? "Submitting..." : "Submit Voice Statement"}</Text>
         </Pressable>
         <Text style={styles.status}>{status}</Text>
 
         {nlpSummary && (
           <View style={styles.nlpCard}>
-            <Text style={styles.nlpTitle}>Google NLP Signals</Text>
+            <Text style={styles.nlpTitle}>Detected Language Signals</Text>
             <Text style={styles.nlpMeta}>Source: {nlpSummary.provider} · Sentiment: {nlpSummary.sentimentLabel}</Text>
             <Text style={styles.nlpLine}>Time clues: {nlpSummary.time.join(", ") || "Not found yet"}</Text>
             <Text style={styles.nlpLine}>Location clues: {nlpSummary.location.join(", ") || "Not found yet"}</Text>
@@ -328,8 +339,8 @@ export function CaptureVoiceScreen({ navigation }: Props) {
         )}
 
         <View style={styles.chatPanel}>
-          <Text style={styles.chatTitle}>Voice AI Assistant</Text>
-          <Text style={styles.chatSub}>Interactive guidance with automatic chat persistence.</Text>
+          <Text style={styles.chatTitle}>Support Assistant</Text>
+          <Text style={styles.chatSub}>Guidance is saved automatically so you can continue later.</Text>
           {chat.map((item, idx) => (
             <View key={`${item.role}-${idx}`} style={[styles.bubble, item.role === "assistant" ? styles.assistant : styles.user]}>
               <Text style={styles.bubbleText}>{item.text}</Text>
@@ -338,12 +349,12 @@ export function CaptureVoiceScreen({ navigation }: Props) {
           <TextInput
             value={chatInput}
             onChangeText={setChatInput}
-            placeholder="Ask: how to phrase this memory?"
+            placeholder="Ask: can you help me phrase this memory?"
             placeholderTextColor={colors.mutedInk}
             style={styles.chatInput}
           />
           <Pressable style={styles.button} onPress={sendToAssistant}>
-            <Text style={styles.buttonLabel}>Send to Assistant</Text>
+            <Text style={styles.buttonLabel}>Send Message</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -357,15 +368,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 20, paddingTop: 20 },
   scroll: { gap: 10, paddingBottom: 172, flexGrow: 1 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
-  pill: { alignSelf: "flex-start", backgroundColor: colors.accentSoft, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10 },
-  pillText: { color: colors.accent, fontSize: 12, fontWeight: "700" },
+  pill: { alignSelf: "flex-start", backgroundColor: colors.panelAlt, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: colors.cloud },
+  pillText: { color: colors.accentStrong, fontSize: 12, fontWeight: "700" },
   voiceTools: {
     flexDirection: "row",
     gap: 10,
   },
   secondaryButton: {
     flex: 1,
-    backgroundColor: "#1F3B63",
+    backgroundColor: colors.sageDeep,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
@@ -376,7 +387,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   stopButton: {
-    backgroundColor: "#A02334",
+    backgroundColor: colors.danger,
   },
   disabledButton: {
     opacity: 0.6,
@@ -386,10 +397,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: -2,
   },
-  input: { backgroundColor: colors.white, borderRadius: 16, padding: 14, minHeight: 160, color: colors.ink, textAlignVertical: "top" },
-  button: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 14, alignItems: "center" },
+  input: {
+    backgroundColor: colors.panel,
+    borderRadius: 16,
+    padding: 14,
+    minHeight: 160,
+    color: colors.ink,
+    textAlignVertical: "top",
+    borderWidth: 1,
+    borderColor: colors.cloud,
+  },
+  button: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: colors.accentStrong },
   buttonSecondary: {
-    backgroundColor: "#1F3B63",
+    backgroundColor: colors.sageDeep,
     borderRadius: 999,
     paddingVertical: 12,
     alignItems: "center",
@@ -398,11 +418,13 @@ const styles = StyleSheet.create({
   buttonLabel: { color: colors.white, fontWeight: "700", fontSize: 16 },
   status: { color: colors.mutedInk, fontSize: 13, lineHeight: 19 },
   nlpCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.panel,
     borderRadius: 14,
     padding: 12,
     gap: 6,
     marginTop: 2,
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   nlpTitle: {
     color: colors.ink,
@@ -419,11 +441,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   chatPanel: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.panel,
     borderRadius: 14,
     padding: 12,
     gap: 8,
     marginTop: 4,
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   chatTitle: {
     color: colors.ink,
@@ -439,10 +463,10 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   assistant: {
-    backgroundColor: "#EDF3FF",
+    backgroundColor: "#F8E8E1",
   },
   user: {
-    backgroundColor: "#F6F6F6",
+    backgroundColor: "#F2F5EE",
   },
   bubbleText: {
     color: colors.ink,
@@ -456,5 +480,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     color: colors.ink,
+    backgroundColor: colors.white,
   },
 });

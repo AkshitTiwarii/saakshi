@@ -193,14 +193,14 @@ export function CaptureUploadScreen({ navigation }: Props) {
         nestedScrollEnabled
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient colors={["#3A2557", "#62306E"]} style={styles.hero}>
+        <LinearGradient colors={["#B25F47", "#924631"]} style={styles.hero}>
           <Text style={styles.kicker}>Evidence Intake</Text>
-          <Text style={styles.title}>Upload Real Artifacts</Text>
-          <Text style={styles.sub}>Select photos, videos, audio, PDFs, or docs. Every save writes a local integrity hash-chain entry.</Text>
+          <Text style={styles.title}>Upload Supporting Evidence</Text>
+          <Text style={styles.sub}>Select photos, videos, audio, PDFs, or documents. Save only what you are ready to share.</Text>
         </LinearGradient>
 
         <View style={styles.actionCard}>
-          <Text style={styles.actionHint}>Pick one or more artifacts, then submit to case evidence.</Text>
+          <Text style={styles.actionHint}>Choose one or more files, then submit when ready.</Text>
           <Pressable style={styles.pickerBtn} onPress={pickMedia} disabled={pickerBusy}>
             <Text style={styles.pickerBtnLabel}>{pickerBusy ? "Opening..." : "Pick Photos / Videos"}</Text>
           </Pressable>
@@ -233,11 +233,11 @@ export function CaptureUploadScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.noteCard}>
-          <Text style={styles.noteTitle}>Optional Context Note</Text>
+            <Text style={styles.noteTitle}>Optional Context Note</Text>
           <TextInput
             value={fileNote}
             onChangeText={onChangeFileNote}
-            placeholder="Optional: what this file proves"
+            placeholder="Optional: why this file may matter"
             placeholderTextColor={colors.mutedInk}
             style={styles.input}
             multiline
@@ -245,7 +245,7 @@ export function CaptureUploadScreen({ navigation }: Props) {
         </View>
 
         <Pressable style={styles.button} onPress={process}>
-          <Text style={styles.buttonLabel}>{loading ? "Saving Securely..." : "Submit Uploaded Evidence"}</Text>
+          <Text style={styles.buttonLabel}>{loading ? "Saving Securely..." : "Submit Evidence"}</Text>
         </Pressable>
         {!!result && <Text style={styles.result}>{result}</Text>}
       </ScrollView>
@@ -256,7 +256,7 @@ export function CaptureUploadScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#EBEDF7", paddingHorizontal: 16, paddingTop: 12 },
+  container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 16, paddingTop: 12 },
   scroll: { gap: 12, paddingBottom: 194, flexGrow: 1 },
   hero: {
     borderRadius: 24,
@@ -264,19 +264,21 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   kicker: {
-    color: "#E1CBFF",
+    color: "#FCEADF",
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 1,
     fontWeight: "800",
   },
   title: { color: "#FFFFFF", fontSize: 28, fontWeight: "900", lineHeight: 34 },
-  sub: { color: "#EEDFFF", fontSize: 13, lineHeight: 19 },
+  sub: { color: "#FCEADF", fontSize: 13, lineHeight: 19 },
   actionCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.panel,
     borderRadius: 20,
     padding: 12,
     gap: 10,
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   actionHint: {
     color: "#4A5673",
@@ -284,10 +286,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   pickerBtn: {
-    backgroundColor: "#4D2F89",
+    backgroundColor: colors.accent,
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.accentStrong,
   },
   pickerBtnLabel: {
     color: "#FFFFFF",
@@ -295,21 +299,25 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   pickerBtnSoft: {
-    backgroundColor: "#F2ECFC",
+    backgroundColor: colors.panelAlt,
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   pickerBtnSoftLabel: {
-    color: "#522D77",
+    color: colors.ink,
     fontSize: 14,
     fontWeight: "800",
   },
   selectedCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.panel,
     borderRadius: 20,
     padding: 12,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   selectedHeader: {
     flexDirection: "row",
@@ -322,7 +330,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   clearLabel: {
-    color: "#9B2D4A",
+    color: colors.accentStrong,
     fontWeight: "700",
     fontSize: 12,
   },
@@ -332,7 +340,7 @@ const styles = StyleSheet.create({
   },
   fileRow: {
     borderWidth: 1,
-    borderColor: "#DEE4F1",
+    borderColor: colors.cloud,
     borderRadius: 12,
     paddingVertical: 9,
     paddingHorizontal: 10,
@@ -356,7 +364,7 @@ const styles = StyleSheet.create({
   },
   removeBtn: {
     borderRadius: 999,
-    backgroundColor: "#FDEFF2",
+    backgroundColor: colors.dangerSoft,
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
@@ -366,10 +374,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   noteCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.panel,
     borderRadius: 20,
     padding: 12,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   noteTitle: {
     color: "#1A2436",
@@ -377,20 +387,22 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   input: {
-    backgroundColor: "#F7FAFF",
+    backgroundColor: colors.white,
     borderRadius: 16,
     padding: 14,
     minHeight: 94,
     color: "#1F2A44",
     textAlignVertical: "top",
     borderWidth: 1,
-    borderColor: "#DCE6F4",
+    borderColor: colors.cloud,
   },
   button: {
-    backgroundColor: "#3E2C77",
+    backgroundColor: colors.accent,
     borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.accentStrong,
   },
   buttonLabel: { color: colors.white, fontWeight: "800", fontSize: 16 },
   result: { color: "#3F4C6A", fontSize: 13, lineHeight: 19, marginTop: 2 },

@@ -17,7 +17,7 @@ const methods = [
 export function CaptureMethodScreen({ route, navigation }: Props) {
   const mood = route.params?.mood || "unknown";
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [apiResult, setApiResult] = useState<string>("Pick any method. You can switch between methods anytime.");
+  const [apiResult, setApiResult] = useState<string>("Choose any way to begin. You can switch methods anytime.");
 
   const handleMethodPress = (methodId: string) => {
     setBusyId(methodId);
@@ -35,16 +35,16 @@ export function CaptureMethodScreen({ route, navigation }: Props) {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
-          <Text style={styles.kicker}>Mood context: {mood}</Text>
-          <Text style={styles.title}>Choose one way to begin.</Text>
-          <Text style={styles.subtitle}>No timeline. No pressure. One memory at a time.</Text>
+          <Text style={styles.kicker}>Current mood context: {mood}</Text>
+          <Text style={styles.title}>Choose the easiest way to start.</Text>
+          <Text style={styles.subtitle}>No rush. No pressure. One detail at a time is enough.</Text>
         </View>
 
         <View style={styles.flowCard}>
-          <Text style={styles.flowTitle}>Capture Flow</Text>
+          <Text style={styles.flowTitle}>What Happens Next</Text>
           <Text style={styles.flowLine}>1. Choose method</Text>
-          <Text style={styles.flowLine}>2. Add memory details</Text>
-          <Text style={styles.flowLine}>3. AI extracts clues for timeline and evidence</Text>
+          <Text style={styles.flowLine}>2. Add details you are ready to share</Text>
+          <Text style={styles.flowLine}>3. Saakshi helps organize clues for timeline and evidence</Text>
         </View>
 
         <View style={styles.list}>
@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   kicker: {
-    color: colors.accent,
+    color: colors.sageDeep,
     fontSize: 12,
     letterSpacing: 1,
     fontWeight: "700",
@@ -109,10 +109,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   flowCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.panel,
     borderRadius: 18,
     padding: 14,
     gap: 4,
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   flowTitle: {
     color: colors.ink,
@@ -128,13 +130,15 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.panelAlt,
     borderRadius: 24,
     paddingHorizontal: 18,
     paddingVertical: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.cloud,
   },
   cardTitle: {
     color: colors.ink,
@@ -147,7 +151,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   arrow: {
-    color: colors.accent,
+    color: colors.accentStrong,
     fontSize: 28,
     fontWeight: "700",
   },
@@ -156,7 +160,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   quickExitText: {
-    color: colors.mutedInk,
+    color: colors.accentStrong,
     textAlign: "center",
     fontSize: 15,
     fontWeight: "700",

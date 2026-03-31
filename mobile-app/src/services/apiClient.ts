@@ -430,6 +430,7 @@ export function transcribeAudioForCurrentCase(params: {
   audioBase64: string;
   mimeType: string;
   languageCode?: string;
+  durationMs?: number;
 }) {
   const caseId = victimSession?.caseId || "demo-case-001";
   return request<{
@@ -446,8 +447,9 @@ export function transcribeAudioForCurrentCase(params: {
       audioBase64: params.audioBase64,
       mimeType: params.mimeType,
       languageCode: params.languageCode || "en-IN",
+      durationMs: Number(params.durationMs || 0),
     }),
-  }, 25000);
+  }, 45000);
 }
 
 export function searchEvidence(caseId: string, query: string) {

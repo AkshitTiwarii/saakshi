@@ -23,6 +23,7 @@ export const CaptureUpload = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [classification, setClassification] = useState<any>(null);
+  const [note, setNote] = useState('');
   const [locationData, setLocationData] = useState<{lat: number, lng: number} | null>(null);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ export const CaptureUpload = () => {
     try {
       // In a real app, we'd upload to Firebase Storage. 
       // For this demo, we'll use the filename/type as "content" or a mock data URL.
-      const result = await classifyFragment(`Uploaded file: ${file.name} (${file.type})`);
+      const result = await classifyFragment(`Uploaded file: ${file.name} (${file.type}) ${note ? `note: ${note}` : ''}`);
 
       const identity = resolveCanonicalVictimIdentity({
         clerkId: user?.id,
@@ -74,6 +75,7 @@ export const CaptureUpload = () => {
         incidentSummary: `Uploaded ${file.name}`,
         fragments: [
           `[UPLOAD] ${file.name} (${file.type || 'unknown/type'})`,
+          ...(note.trim() ? [`[UPLOAD_NOTE] ${note.trim()}`] : []),
           `[UPLOAD_CLASSIFICATION] ${JSON.stringify(result)}`,
           `[UPLOAD_LOCATION] ${locationSummary}`,
         ],
@@ -101,22 +103,22 @@ export const CaptureUpload = () => {
       </AnimatePresence>
 
       <header className="p-6 flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="text-primary">
+        <button onClick={() => navigate(-1)} className="sa-btn-ghost h-11 w-11 !p-0 text-primary" aria-label="Go back">
           <ArrowLeft size={24} />
         </button>
-        <h1 className="text-xl font-bold text-primary">Upload Fragment</h1>
+        <h1 className="text-xl font-bold text-on-surface">Upload Evidence</h1>
       </header>
 
       <main className="flex-grow flex flex-col items-center justify-center px-8 gap-12">
         <div className="text-center space-y-4">
-          <h2 className="text-3xl font-bold text-on-surface">Existing Memories.</h2>
+          <h2 className="text-3xl font-bold text-on-surface">Existing Evidence</h2>
           <p className="text-on-surface-variant max-w-xs mx-auto">
-            Upload photos, audio recordings, or documents that hold a piece of the truth.
+            Upload photos, audio recordings, or documents. Add a note if context may help later.
           </p>
         </div>
 
         {!file ? (
-          <label className="w-full max-w-md aspect-square rounded-3xl border-2 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-primary/10 transition-colors">
+          <label className="w-full max-w-md aspect-square rounded-3xl border-2 border-dashed border-primary/30 bg-surface-container-low flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-primary/10 transition-colors">
             <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center text-primary">
               <Upload size={40} />
             </div>
@@ -128,7 +130,7 @@ export const CaptureUpload = () => {
           </label>
         ) : (
           <div className="w-full max-w-md space-y-6">
-            <div className="relative aspect-square rounded-3xl overflow-hidden bg-surface-container-low border border-outline-variant/10 flex items-center justify-center">
+            <div className="relative aspect-square rounded-3xl overflow-hidden bg-surface-container-low border border-[var(--color-outline)] flex items-center justify-center">
               {preview ? (
                 <img src={preview} alt="Preview" className="w-full h-full object-cover" />
               ) : (
@@ -145,10 +147,20 @@ export const CaptureUpload = () => {
               </button>
             </div>
 
-            <button 
+            <div className="sa-card p-4">
+              <label className="sa-field-label">Optional context note</label>
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                className="sa-input min-h-28 resize-y"
+                placeholder="Example: CCTV camera faces this lane, captured after 9:15 PM."
+              />
+            </div>
+
+            <button
               onClick={handleUpload}
               disabled={isAnalyzing}
-              className="w-full bg-primary text-on-primary py-6 rounded-full text-xl font-bold shadow-lg active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+              className="sa-btn-primary w-full py-5 text-lg flex items-center justify-center gap-3"
             >
               {isAnalyzing ? (
                 <>

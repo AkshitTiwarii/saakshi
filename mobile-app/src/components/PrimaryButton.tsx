@@ -12,7 +12,7 @@ interface PrimaryButtonProps {
 export function PrimaryButton({ label, onPress, style, disabled = false }: PrimaryButtonProps) {
   return (
     <Pressable
-      style={[styles.button, disabled ? styles.buttonDisabled : null, style]}
+      style={({ pressed }) => [styles.button, pressed && !disabled ? styles.buttonPressed : null, disabled ? styles.buttonDisabled : null, style]}
       onPress={onPress}
       disabled={disabled}
     >
@@ -28,14 +28,19 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#1E2330",
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.accentStrong,
+    shadowColor: "#492518",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    elevation: 6,
+  },
+  buttonPressed: {
+    backgroundColor: colors.accentStrong,
   },
   buttonDisabled: {
-    opacity: 0.55,
+    opacity: 0.6,
   },
   label: {
     color: colors.white,

@@ -4,14 +4,10 @@ import {
   useUser,
 } from '@clerk/clerk-react';
 import {
-  Mic, 
-  Square, 
-  ArrowLeft, 
-  Sparkles, 
-  CheckCircle, 
-  AlertCircle,
+  Mic,
+  Square,
+  ArrowLeft,
   Loader2,
-  Volume2,
   Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -150,17 +146,17 @@ export const CaptureVoice = () => {
         )}
       </AnimatePresence>
       <header className="p-6 flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="text-primary">
+        <button onClick={() => navigate(-1)} className="sa-btn-ghost h-11 w-11 !p-0 text-primary" aria-label="Go back">
           <ArrowLeft size={24} />
         </button>
-        <h1 className="text-xl font-bold text-primary">Voice Capture</h1>
+        <h1 className="text-xl font-bold text-on-surface">Voice Capture</h1>
       </header>
 
       <main className="flex-grow flex flex-col items-center justify-center px-8 gap-12">
         <div className="text-center space-y-4">
-          <h2 className="text-3xl font-bold text-on-surface">Just speak.</h2>
+          <h2 className="text-3xl font-bold text-on-surface">Speak at your own pace.</h2>
           <p className="text-on-surface-variant max-w-xs mx-auto">
-            Don't worry about order or logic. Just tell me what you remember.
+            No perfect order is needed. Share whatever details you can remember right now.
           </p>
         </div>
 
@@ -186,7 +182,7 @@ export const CaptureVoice = () => {
             )}
           </AnimatePresence>
 
-          <button 
+          <button
             onClick={handleToggleRecording}
             disabled={isAnalyzing}
             className={`relative z-10 w-32 h-32 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl ${
@@ -211,29 +207,34 @@ export const CaptureVoice = () => {
 
         <AnimatePresence>
           {isAnalyzing && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="glass-card p-8 rounded-2xl border border-primary/10 flex flex-col items-center gap-4 max-w-sm w-full"
+              className="sa-card p-8 flex flex-col items-center gap-4 max-w-sm w-full"
             >
               <Loader2 className="animate-spin text-primary" size={32} />
               <div className="text-center">
-                <h3 className="font-bold text-lg mb-1">Reconstructing Fragment</h3>
-                <p className="text-sm text-on-surface-variant italic">"Extracting time, location, and sensory clues..."</p>
+                <h3 className="font-bold text-lg mb-1">Organizing your statement</h3>
+                <p className="text-sm text-on-surface-variant italic">"Extracting timeline and context clues..."</p>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {transcript && !isAnalyzing && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="w-full max-w-md bg-surface-container-low p-6 rounded-xl italic text-on-surface-variant leading-relaxed"
-          >
-            "{transcript}"
-          </motion.div>
-        )}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="sa-card w-full max-w-xl p-5"
+        >
+          <label className="sa-field-label">Transcript (editable)</label>
+          <textarea
+            value={transcript}
+            onChange={(event) => setTranscript(event.target.value)}
+            className="sa-input min-h-36 resize-y"
+            placeholder="Your transcript appears here. You can edit wording before saving."
+          />
+          <p className="mt-2 text-xs text-on-surface-variant">Tip: adding small sensory details can improve evidence clarity.</p>
+        </motion.div>
       </main>
 
       <footer className="p-12 flex justify-center">
