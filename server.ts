@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { randomUUID, createHash } from "crypto";
+import { randomUUID, createHash, createCipheriv, createDecipheriv } from "crypto";
 import { LanguageServiceClient } from "@google-cloud/language";
 import { SpeechClient } from "@google-cloud/speech";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -69,6 +69,8 @@ const hashQueuePath = path.join(process.cwd(), "workers", "hashAnchoring", "queu
 const reportsPath = path.join(process.cwd(), "reports");
 const caseStatePath = path.join(process.cwd(), "backend", "case", "case-state.json");
 const mlServiceUrl = (process.env.ML_SERVICE_URL || "http://127.0.0.1:8001").replace(/\/$/, "");
+const caseStateEncryptionSecret = String(process.env.CASE_STATE_ENCRYPTION_KEY || "").trim();
+const enableFakeVictimAssessment = String(process.env.ENABLE_FAKE_VICTIM_ASSESSMENT || "false").toLowerCase() === "true";
 
 type PersistedCaseState = {
   caseAssignments: CaseAssignment[];
@@ -77,6 +79,57 @@ type PersistedCaseState = {
   victimDetailsByCase: Array<[string, VictimCasePayload]>;
   caseIntegrityByCase: Array<[string, CaseIntegrityEntry[]]>;
 };
+
+type EncryptedPersistedCaseState = {
+  encrypted: true;
+  algorithm: "aes-256-gcm";
+  keyVersion: "v1";
+  iv: string;
+  authTag: string;
+  ciphertext: string;
+};
+
+function getCaseStateEncryptionKey(): Buffer | null {
+  if (!caseStateEncryptionSecret) return null;
+  return createHash("sha256").update(caseStateEncryptionSecret, "utf8").digest();
+}
+
+function encryptCaseState(data: PersistedCaseState): EncryptedPersistedCaseState {
+  const key = getCaseStateEncryptionKey();
+  if (!key) {
+    throw new Error("CASE_STATE_ENCRYPTION_KEY is required for encrypted state persistence");
+  }
+
+  const iv = Buffer.from(randomUUID().replace(/-/g, "").slice(0, 24), "hex");
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = JSON.stringify(data);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return {
+    encrypted: true,
+    algorithm: "aes-256-gcm",
+    keyVersion: "v1",
+    iv: iv.toString("base64"),
+    authTag: authTag.toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+  };
+}
+
+function decryptCaseState(payload: EncryptedPersistedCaseState): PersistedCaseState {
+  const key = getCaseStateEncryptionKey();
+  if (!key) {
+    throw new Error("Encrypted case-state found but CASE_STATE_ENCRYPTION_KEY is not configured");
+  }
+
+  const iv = Buffer.from(payload.iv, "base64");
+  const authTag = Buffer.from(payload.authTag, "base64");
+  const ciphertext = Buffer.from(payload.ciphertext, "base64");
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(authTag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  return JSON.parse(plaintext || "{}") as PersistedCaseState;
+}
 
 function ensureParentDir(filePath: string) {
   const dir = path.dirname(filePath);
@@ -95,7 +148,14 @@ function persistCaseState() {
       victimDetailsByCase: Array.from(victimDetailsByCase.entries()),
       caseIntegrityByCase: Array.from(caseIntegrityByCase.entries()),
     };
-    fs.writeFileSync(caseStatePath, JSON.stringify(data, null, 2), "utf8");
+
+    const shouldEncrypt = !!getCaseStateEncryptionKey();
+    if (shouldEncrypt) {
+      const encrypted = encryptCaseState(data);
+      fs.writeFileSync(caseStatePath, JSON.stringify(encrypted, null, 2), "utf8");
+    } else {
+      fs.writeFileSync(caseStatePath, JSON.stringify(data, null, 2), "utf8");
+    }
   } catch (error) {
     console.error("persistCaseState failed", error);
   }
@@ -106,7 +166,10 @@ function loadPersistedCaseState() {
 
   try {
     const raw = fs.readFileSync(caseStatePath, "utf8");
-    const parsed = JSON.parse(raw || "{}") as Partial<PersistedCaseState>;
+    const parsedRaw = JSON.parse(raw || "{}");
+    const parsed = (parsedRaw?.encrypted
+      ? decryptCaseState(parsedRaw as EncryptedPersistedCaseState)
+      : parsedRaw) as Partial<PersistedCaseState>;
 
     caseAssignments.clear();
     victimCaseMap.clear();
@@ -394,7 +457,7 @@ function buildEvidenceLeads(fragments: string[], queryHint?: string) {
     leads.push({
       type: "weather",
       query: "Historical weather for incident window and city",
-      source: "Open-Meteo/IMD",
+      source: "Open-Meteo/IMD (public corroboration source)",
       confidence: 0.81,
       rationale: "Weather markers can corroborate context details.",
     });
@@ -402,28 +465,28 @@ function buildEvidenceLeads(fragments: string[], queryHint?: string) {
   if (text.includes("cab") || text.includes("uber") || text.includes("ola") || text.includes("taxi")) {
     leads.push({
       type: "transport",
-      query: "Cab booking/trip logs and route timeline",
-      source: "Ride provider receipts/device history",
+      query: "Prepare legal request for cab booking/trip logs and route timeline",
+      source: "Ride provider receipts/device history (lawful request path)",
       confidence: 0.78,
-      rationale: "Mobility logs help establish movement chronology.",
+      rationale: "Mobility logs help establish movement chronology, subject to lawful disclosure.",
     });
   }
   if (text.includes("market") || text.includes("mall") || text.includes("road") || text.includes("station")) {
     leads.push({
       type: "cctv",
-      query: "CCTV availability near mentioned public location",
-      source: "Local admin/private establishments",
+      query: "Prepare preservation notice for CCTV near mentioned location",
+      source: "Local admin/private establishments (preservation + legal request)",
       confidence: 0.73,
-      rationale: "Public area video may support timeline claims.",
+      rationale: "Public area video may support timeline claims when preserved early.",
     });
   }
   if (text.includes("call") || text.includes("phone") || text.includes("whatsapp") || text.includes("message")) {
     leads.push({
       type: "digital",
-      query: "Call Detail Record and app message export metadata",
-      source: "Device logs / telecom records",
+      query: "Draft lawful request for call records and message metadata",
+      source: "Device logs / telecom records (requires legal authorization)",
       confidence: 0.76,
-      rationale: "Communication records can validate sequence and contact nodes.",
+      rationale: "Communication records can validate sequence and contact nodes under legal process.",
     });
   }
 
@@ -657,7 +720,29 @@ async function startServer() {
     ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
     : null;
 
+  if (process.env.NODE_ENV === "production") {
+    if (ADMIN_EMAIL === "akshittiwari29@gmail.com" || ADMIN_PASSWORD === "@Akshittiwari2910") {
+      throw new Error("Refusing to boot in production with default admin credentials");
+    }
+    if (!caseStateEncryptionSecret) {
+      throw new Error("Refusing to boot in production without CASE_STATE_ENCRYPTION_KEY");
+    }
+  }
+
+  app.disable("x-powered-by");
+
   app.use(express.json({ limit: "12mb" }));
+
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Permissions-Policy", "microphone=(self), camera=(self), geolocation=(self)");
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    next();
+  });
 
   app.use((req, res, next) => {
     // Avoid logging Vite asset/HMR requests; writing log files on every static request can trigger reload loops.
@@ -1665,6 +1750,10 @@ async function startServer() {
         caseId,
         autoQuery,
         leads,
+        legalBoundary: {
+          directGovernmentApiAccess: false,
+          note: "Saakshi generates evidence leads and legal-request prompts. It does not directly fetch protected telecom, banking, or government records.",
+        },
         clueGraph: {
           memoryNodes: fragments.length,
           evidenceLeads: leads.length,
@@ -1678,6 +1767,13 @@ async function startServer() {
 
   app.post("/api/risk/fake-victim-assessment", requireConsentForPurpose("analysis"), (req, res) => {
     try {
+      if (!enableFakeVictimAssessment) {
+        return res.status(403).json({
+          error: "Feature disabled",
+          reason: "Risk scoring is disabled by default to avoid misuse. Enable only in controlled legal-review environments.",
+        });
+      }
+
       const caseId = String(req.body?.caseId || "").trim();
       if (!caseId) {
         return res.status(400).json({ error: "caseId is required" });

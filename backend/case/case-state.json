@@ -22,6 +22,19 @@
       "role": "police",
       "designatedAt": "2026-03-28T20:33:31.427Z",
       "designatedByActorId": "akshittiwari29@gmail.com",
+      "status": "revoked",
+      "scope": [
+        "victim_media",
+        "ai_analysis"
+      ]
+    },
+    {
+      "designationId": "designation-64fedd9a-17a8-4f52-8726-39f626f4f548",
+      "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+      "officerId": "OFF-IND-221",
+      "role": "police",
+      "designatedAt": "2026-03-31T19:02:22.943Z",
+      "designatedByActorId": "akshittiwari29@gmail.com",
       "status": "active",
       "scope": [
         "victim_media",
