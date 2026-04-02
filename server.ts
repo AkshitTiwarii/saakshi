@@ -64,6 +64,7 @@ type CaseIntegrityEntry = {
 const victimDetailsByCase = new Map<string, VictimCasePayload>();
 const caseIntegrityByCase = new Map<string, CaseIntegrityEntry[]>();
 const reportFileById = new Map<string, string>();
+const reportBufferById = new Map<string, Uint8Array>();
 
 const hashQueuePath = path.join(process.cwd(), "workers", "hashAnchoring", "queue.json");
 const reportsPath = path.join(process.cwd(), "reports");
@@ -591,118 +592,199 @@ async function renderCaseReportPdfBuffer(
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const width = 595;
   const height = 842;
-  const margin = 38;
+  const margin = 34;
   const bodyWidth = width - margin * 2;
+  const leftColumn = 268;
+  const rightColumn = bodyWidth - leftColumn - 12;
 
   let page = pdf.addPage([width, height]);
   let y = height - margin;
 
-  const drawPageHeader = () => {
-    page.drawRectangle({
-      x: margin,
-      y: y - 38,
-      width: bodyWidth,
-      height: 34,
-      color: rgb(0.09, 0.2, 0.36),
-    });
-    page.drawText("Saakshi Forensic Intelligence Report", {
-      x: margin + 12,
-      y: y - 28,
-      size: 12,
-      font: bold,
-      color: rgb(1, 1, 1),
-    });
-    y -= 56;
+  const theme = {
+    ink: rgb(0.14, 0.16, 0.2),
+    muted: rgb(0.39, 0.43, 0.5),
+    navy: rgb(0.08, 0.14, 0.25),
+    blue: rgb(0.14, 0.32, 0.53),
+    teal: rgb(0.12, 0.42, 0.4),
+    sand: rgb(0.97, 0.95, 0.91),
+    sandDark: rgb(0.86, 0.83, 0.77),
+    card: rgb(1, 1, 1),
+    cardTint: rgb(0.96, 0.98, 1),
   };
 
-  const addPage = () => {
+  const drawFooter = (pageIndex: number, totalPages: number) => {
+    page.drawLine({ start: { x: margin, y: 28 }, end: { x: width - margin, y: 28 }, thickness: 0.8, color: theme.sandDark });
+    page.drawText("Confidential - Authorized legal use only", {
+      x: margin,
+      y: 14,
+      size: 8.5,
+      font,
+      color: theme.muted,
+    });
+    page.drawText(`Page ${pageIndex + 1} of ${totalPages}`, {
+      x: width - margin - 76,
+      y: 14,
+      size: 8.5,
+      font,
+      color: theme.muted,
+    });
+  };
+
+  const startPage = (isCover = false) => {
     page = pdf.addPage([width, height]);
     y = height - margin;
-    drawPageHeader();
+
+    if (isCover) {
+      page.drawRectangle({ x: 0, y: height - 128, width, height: 128, color: theme.navy });
+      page.drawText("SAAKSHI", {
+        x: margin,
+        y: height - 72,
+        size: 22,
+        font: bold,
+        color: rgb(1, 1, 1),
+      });
+      page.drawText("Forensic Intelligence Report", {
+        x: margin,
+        y: height - 96,
+        size: 18,
+        font: bold,
+        color: rgb(1, 1, 1),
+      });
+      page.drawText("Structured review packet for survivor, officer, and legal workflows", {
+        x: margin,
+        y: height - 116,
+        size: 10,
+        font,
+        color: rgb(0.88, 0.92, 0.98),
+      });
+      y = height - 160;
+    }
   };
 
-  drawPageHeader();
+  const ensureSpace = (requiredHeight: number, isCover = false) => {
+    if (y - requiredHeight < 60) {
+      startPage(isCover);
+    }
+  };
 
-  const titleLines = wrapPdfText({
-    text: reportTitle,
-    maxWidth: bodyWidth,
-    font: bold,
-    size: 17,
-  });
+  const drawCard = (x: number, topY: number, cardWidth: number, cardHeight: number, fill: [number, number, number]) => {
+    page.drawRectangle({ x, y: topY - cardHeight, width: cardWidth, height: cardHeight, color: rgb(fill[0], fill[1], fill[2]) });
+    page.drawRectangle({ x, y: topY - cardHeight, width: cardWidth, height: cardHeight, borderColor: theme.sandDark, borderWidth: 0.6, opacity: 1, color: rgb(fill[0], fill[1], fill[2]) });
+  };
 
-  for (const titleLine of titleLines) {
-    if (y < 90) addPage();
-    page.drawText(titleLine, {
-      x: margin,
-      y,
-      size: 17,
+  const drawSection = (title: string, lines: string[]) => {
+    const estimateHeight = 30 + Math.max(1, lines.length) * 14;
+    ensureSpace(Math.max(estimateHeight, 76));
+
+    const sectionTop = y;
+    drawCard(margin, sectionTop, bodyWidth, Math.max(estimateHeight, 76), [1, 1, 1]);
+    page.drawRectangle({ x: margin, y: sectionTop - 20, width: bodyWidth, height: 20, color: theme.cardTint });
+    page.drawText(title, {
+      x: margin + 10,
+      y: sectionTop - 15,
+      size: 11,
       font: bold,
-      color: rgb(0.08, 0.13, 0.22),
+      color: theme.blue,
     });
-    y -= 22;
-  }
-  y -= 8;
 
-  for (const section of sections) {
-    if (y < 90) addPage();
-
-    page.drawRectangle({
-      x: margin,
-      y: y - 20,
-      width: bodyWidth,
-      height: 18,
-      color: rgb(0.9, 0.94, 0.99),
-    });
-    page.drawText(section.title, {
-      x: margin + 8,
-      y: y - 15,
-      size: 10.5,
-      font: bold,
-      color: rgb(0.11, 0.24, 0.43),
-    });
-    y -= 30;
-
-    for (const rawLine of section.lines) {
-      const wrapped = wrapPdfText({
-        text: rawLine,
-        maxWidth: bodyWidth - 6,
-        font,
-        size: 9.8,
-      });
-
+    let cursorY = sectionTop - 34;
+    for (const rawLine of lines) {
+      const wrapped = wrapPdfText({ text: rawLine, maxWidth: bodyWidth - 20, font, size: 9.4 });
       for (const line of wrapped) {
-        if (y < 58) addPage();
+        if (cursorY < 56) {
+          startPage();
+          drawCard(margin, y, bodyWidth, 760, [1, 1, 1]);
+          cursorY = y - 18;
+        }
         page.drawText(line, {
-          x: margin + 3,
-          y,
-          size: 9.8,
+          x: margin + 10,
+          y: cursorY,
+          size: 9.4,
           font,
-          color: rgb(0.15, 0.18, 0.22),
+          color: theme.ink,
         });
-        y -= 13;
+        cursorY -= 12.8;
       }
     }
 
-    y -= 8;
+    y = cursorY - 10;
+  };
+
+  const titleLines = wrapPdfText({ text: reportTitle, maxWidth: bodyWidth, font: bold, size: 18 });
+  startPage(true);
+
+  for (const titleLine of titleLines) {
+    page.drawText(titleLine, {
+      x: margin,
+      y,
+      size: 18,
+      font: bold,
+      color: theme.navy,
+    });
+    y -= 22;
+  }
+
+  page.drawText(`Generated: ${new Date().toISOString()}`, {
+    x: margin,
+    y: y - 4,
+    size: 9.2,
+    font,
+    color: theme.muted,
+  });
+  y -= 20;
+
+  const summaryCards = sections.slice(0, 3);
+  const summaryCardHeight = 62;
+  const summaryGap = 10;
+  const summaryWidth = (bodyWidth - summaryGap) / 2;
+
+  if (summaryCards.length) {
+    ensureSpace(160);
+    page.drawText("Quick Summary", {
+      x: margin,
+      y,
+      size: 12,
+      font: bold,
+      color: theme.navy,
+    });
+    y -= 18;
+
+    const cardsToRender = summaryCards.slice(0, 4);
+    cardsToRender.forEach((section, index) => {
+      const x = index % 2 === 0 ? margin : margin + summaryWidth + summaryGap;
+      const topY = y - Math.floor(index / 2) * (summaryCardHeight + 10);
+      drawCard(x, topY, summaryWidth, summaryCardHeight, [0.97, 0.98, 1]);
+      page.drawText(section.title, {
+        x: x + 10,
+        y: topY - 18,
+        size: 10,
+        font: bold,
+        color: theme.blue,
+      });
+      const preview = section.lines.slice(0, 2).join(" • ").slice(0, 120) || "No data available";
+      const previewLines = wrapPdfText({ text: preview, maxWidth: summaryWidth - 20, font, size: 8.7 });
+      let previewY = topY - 34;
+      for (const line of previewLines.slice(0, 2)) {
+        page.drawText(line, {
+          x: x + 10,
+          y: previewY,
+          size: 8.7,
+          font,
+          color: theme.ink,
+        });
+        previewY -= 11;
+      }
+    });
+    y -= (Math.ceil(cardsToRender.length / 2) * (summaryCardHeight + 10)) + 16;
+  }
+
+  for (const section of sections) {
+    drawSection(section.title, section.lines);
+    y -= 4;
   }
 
   const pages = pdf.getPages();
-  pages.forEach((p, index) => {
-    p.drawText(`Page ${index + 1} of ${pages.length}`, {
-      x: width - margin - 88,
-      y: 20,
-      size: 8.8,
-      font,
-      color: rgb(0.4, 0.45, 0.52),
-    });
-    p.drawText("Confidential - Authorized legal use only", {
-      x: margin,
-      y: 20,
-      size: 8.8,
-      font,
-      color: rgb(0.4, 0.45, 0.52),
-    });
-  });
+  pages.forEach((p, index) => drawFooter(index, pages.length));
 
   return pdf.save();
 }
@@ -1954,6 +2036,7 @@ async function startServer() {
       const filePath = path.join(reportsPath, fileName);
       fs.writeFileSync(filePath, Buffer.from(pdfBytes));
       reportFileById.set(reportId, filePath);
+      reportBufferById.set(reportId, pdfBytes);
 
       res.json({
         reportId,
@@ -1985,13 +2068,22 @@ async function startServer() {
     if (!reportId) {
       return res.status(400).json({ error: "reportId is required" });
     }
+    const pdfBytes = reportBufferById.get(reportId);
+    if (pdfBytes) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="saakshi-${reportId}.pdf"`);
+      return res.send(Buffer.from(pdfBytes));
+    }
+
     const filePath = reportFileById.get(reportId);
     if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ error: "report not found" });
     }
+    const fileBuffer = fs.readFileSync(filePath);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename=saakshi-${reportId}.pdf`);
-    res.sendFile(filePath);
+    res.setHeader("Content-Disposition", `attachment; filename="saakshi-${reportId}.pdf"`);
+    res.setHeader("Content-Length", String(fileBuffer.byteLength));
+    res.send(fileBuffer);
   });
 
   // ============================================================================
@@ -2790,6 +2882,26 @@ async function startServer() {
       const fragments = (victimPayload?.fragments || [])
         .map((fragment) => String(fragment || "").trim())
         .filter(Boolean);
+      const captureSummary = fragments.reduce(
+        (accumulator, fragment) => {
+          const tag = String(fragment.match(/^\[([^\]]+)\]/)?.[1] || "").toLowerCase();
+          if (tag.includes("voice")) accumulator.voiceCount += 1;
+          else if (tag.includes("draw")) accumulator.drawingCount += 1;
+          else if (tag.includes("upload")) accumulator.uploadCount += 1;
+          else if (tag.includes("text") || tag.includes("write") || tag.includes("case-summary") || tag.includes("dashboard-case-brief")) accumulator.writingCount += 1;
+          else accumulator.otherCount += 1;
+          return accumulator;
+        },
+        {
+          totalFragments: fragments.length,
+          writingCount: 0,
+          voiceCount: 0,
+          drawingCount: 0,
+          uploadCount: 0,
+          otherCount: 0,
+          latestSource: String(victimPayload?.metadata?.source || null),
+        }
+      );
       const caseInsight = await buildCaseInsightBundle({
         caseId,
         profile: victimPayload?.profile,
@@ -2818,6 +2930,8 @@ async function startServer() {
         victimProfile: victimPayload?.profile || null,
         victimFragments: fragments,
         metadata: victimPayload?.metadata || {},
+        captureSummary,
+        consentGrants: listGrantsByCase(caseId),
         intelligence: {
           legalSuggestions: caseInsight.legalSuggestions,
           contradictionRisks: caseInsight.contradictionRisks,

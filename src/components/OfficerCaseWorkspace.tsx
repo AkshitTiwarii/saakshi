@@ -6,6 +6,9 @@ type DetailedCase = {
   caseId: string;
   caseNumber: string;
   victimUniqueId: string;
+  status?: string;
+  createdAt?: string;
+  createdByAdminId?: string;
   victimProfile?: {
     email?: string;
     displayName?: string;
@@ -16,6 +19,15 @@ type DetailedCase = {
   } | null;
   victimFragments?: string[];
   metadata?: Record<string, unknown>;
+  captureSummary?: {
+    totalFragments: number;
+    writingCount: number;
+    voiceCount: number;
+    drawingCount: number;
+    uploadCount: number;
+    otherCount: number;
+    latestSource?: string | null;
+  };
   intelligence?: {
     legalSuggestions?: Array<{ code: string; title: string; why: string }>;
     contradictionRisks?: Array<{ level: string; title: string; detail: string; mitigation?: string }>;
@@ -39,6 +51,22 @@ type DetailedCase = {
     latestHash?: string | null;
     latestEntryAt?: string | null;
   };
+};
+
+type ConsentGrantRecord = {
+  grantId: string;
+  caseId: string;
+  grantedByActorId: string;
+  granteeActorId?: string;
+  granteeRole: string;
+  purpose: string;
+  requestedFields: string[];
+  redactions: string[];
+  policyVersion: string;
+  status: 'active' | 'revoked';
+  createdAt: string;
+  revokedAt?: string;
+  expiresAt?: string;
 };
 
 type IntegrityVerificationResult = {
@@ -89,6 +117,7 @@ export function OfficerCaseWorkspace() {
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyError, setVerifyError] = useState('');
   const [verifyResult, setVerifyResult] = useState<IntegrityVerificationResult | null>(null);
+  const [grants, setGrants] = useState<ConsentGrantRecord[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -108,6 +137,13 @@ export function OfficerCaseWorkspace() {
           throw new Error(data?.error || 'Failed to load case workspace');
         }
         setDetails(data as DetailedCase);
+        const grantsResp = await fetch(`/api/consent/grants/${encodeURIComponent(caseId)}`);
+        if (grantsResp.ok) {
+          const grantsData = await grantsResp.json();
+          setGrants(Array.isArray(grantsData?.grants) ? grantsData.grants : []);
+        } else {
+          setGrants([]);
+        }
       } catch (e: any) {
         setError(e.message || 'Unable to load case workspace');
       } finally {
@@ -117,6 +153,59 @@ export function OfficerCaseWorkspace() {
 
     load();
   }, [caseId, officerId]);
+
+  const fragmentGroups = useMemo(() => {
+    const source = details?.victimFragments || [];
+    const buckets = {
+      writing: [] as string[],
+      voice: [] as string[],
+      drawing: [] as string[],
+      upload: [] as string[],
+      other: [] as string[],
+    };
+
+    for (const fragment of source) {
+      const text = String(fragment || '').trim();
+      if (!text) continue;
+
+      const match = text.match(/^\[([^\]]+)\]\s*(.*)$/i);
+      const tag = (match?.[1] || '').toLowerCase();
+      const body = (match?.[2] || text).trim() || text;
+
+      if (tag.includes('voice')) buckets.voice.push(body);
+      else if (tag.includes('draw')) buckets.drawing.push(body);
+      else if (tag.includes('upload')) buckets.upload.push(body);
+      else if (tag.includes('text') || tag.includes('write') || tag.includes('case-summary') || tag.includes('dashboard-case-brief')) buckets.writing.push(body);
+      else buckets.other.push(text);
+    }
+
+    return buckets;
+  }, [details?.victimFragments]);
+
+  const captureSummary = details?.captureSummary || {
+    totalFragments: details?.victimFragments?.length || 0,
+    writingCount: fragmentGroups.writing.length,
+    voiceCount: fragmentGroups.voice.length,
+    drawingCount: fragmentGroups.drawing.length,
+    uploadCount: fragmentGroups.upload.length,
+    otherCount: fragmentGroups.other.length,
+    latestSource: String(details?.metadata?.source || 'n/a'),
+  };
+
+  const keyValuePairs = [
+    { label: 'Case Number', value: details?.caseNumber || 'n/a' },
+    { label: 'Case ID', value: details?.caseId || 'n/a' },
+    { label: 'Victim UID', value: details?.victimUniqueId || 'n/a' },
+    { label: 'Created At', value: details?.createdAt || 'n/a' },
+    { label: 'Created By', value: details?.createdByAdminId || 'n/a' },
+    { label: 'Status', value: details?.status || 'n/a' },
+    { label: 'Display Name', value: details?.victimProfile?.displayName || 'n/a' },
+    { label: 'Email', value: details?.victimProfile?.email || 'n/a' },
+    { label: 'Phone', value: details?.victimProfile?.phone || 'n/a' },
+    { label: 'Emergency Contact', value: details?.victimProfile?.emergencyContact || 'n/a' },
+    { label: 'Incident Summary', value: details?.victimProfile?.incidentSummary || 'n/a' },
+    { label: 'Last Updated', value: details?.victimProfile?.updatedAt || 'n/a' },
+  ];
 
   const exportOfficerReport = async () => {
     if (!caseId || !officerId) return;
@@ -249,6 +338,24 @@ export function OfficerCaseWorkspace() {
               <h2 className="text-2xl font-black text-slate-900">{details.caseNumber}</h2>
               <p className="text-slate-700 mt-2">Case ID: {details.caseId}</p>
               <p className="text-slate-700">Victim UID: {details.victimUniqueId}</p>
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Fragments</div>
+                  <div className="text-xl font-black text-slate-900">{captureSummary.totalFragments}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Integrity Entries</div>
+                  <div className="text-xl font-black text-slate-900">{details.integrity?.totalEntries || 0}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Consent Grants</div>
+                  <div className="text-xl font-black text-slate-900">{grants.filter((grant) => grant.status === 'active').length}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Latest Hash</div>
+                  <div className="text-xs font-mono text-slate-800 break-all mt-1">{details.integrity?.latestHash || 'n/a'}</div>
+                </div>
+              </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                   onClick={exportOfficerReport}
@@ -275,6 +382,7 @@ export function OfficerCaseWorkspace() {
               </div>
               {!!reportStatus && <p className="text-sm text-slate-600 mt-3">{reportStatus}</p>}
               {!!verifyError && <p className="text-sm text-rose-700 mt-2">{verifyError}</p>}
+              <p className="text-xs text-slate-500 mt-3">The PDF export uses a structured forensic layout with section headers, summary cards, and explicit integrity footer.</p>
             </div>
 
             {verifyResult && (
@@ -346,12 +454,13 @@ export function OfficerCaseWorkspace() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white border border-slate-200 rounded-2xl p-5">
                 <h3 className="font-bold text-slate-900">Victim Profile</h3>
-                <div className="mt-3 text-sm text-slate-700 space-y-2">
-                  <div>Name: {details.victimProfile?.displayName || 'n/a'}</div>
-                  <div>Email: {details.victimProfile?.email || 'n/a'}</div>
-                  <div>Phone: {details.victimProfile?.phone || 'n/a'}</div>
-                  <div>Emergency Contact: {details.victimProfile?.emergencyContact || 'n/a'}</div>
-                  <div>Summary: {details.victimProfile?.incidentSummary || 'n/a'}</div>
+                <div className="mt-3 text-sm text-slate-700 space-y-3">
+                  {keyValuePairs.map((entry) => (
+                    <div key={entry.label} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs uppercase tracking-wide text-slate-500">{entry.label}</div>
+                      <div className="mt-1 text-slate-800 whitespace-pre-wrap break-words">{entry.value}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -363,7 +472,22 @@ export function OfficerCaseWorkspace() {
                   <div>Total Entries: {details.integrity?.totalEntries || 0}</div>
                   <div>Latest Entry: {details.integrity?.latestEntryAt || 'n/a'}</div>
                   <div className="break-all">Latest Hash: {details.integrity?.latestHash || 'n/a'}</div>
+                  <div>Latest Source: {String(details.metadata?.source || 'n/a')}</div>
+                  <div>Last Updated Source: {String(details.metadata?.lastUpdatedAt || 'n/a')}</div>
                 </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <h3 className="font-bold text-slate-900">Capture Summary</h3>
+              <p className="text-xs text-slate-500 mt-1">Derived from uploaded tags and case payload metadata.</p>
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Writing: {captureSummary.writingCount}</div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Voice: {captureSummary.voiceCount}</div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Drawing: {captureSummary.drawingCount}</div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Uploads: {captureSummary.uploadCount}</div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Other: {captureSummary.otherCount}</div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Source: {captureSummary.latestSource || 'n/a'}</div>
               </div>
             </div>
 
@@ -380,6 +504,40 @@ export function OfficerCaseWorkspace() {
                     {item}
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <h3 className="font-bold text-slate-900">Consent Grants</h3>
+              <div className="mt-3 space-y-2">
+                {grants.length === 0 && <p className="text-sm text-slate-600">No consent grants found for this case.</p>}
+                {grants.map((grant) => (
+                  <div key={grant.grantId} className="border border-slate-200 rounded-lg p-3 bg-slate-50 text-sm text-slate-700">
+                    <div className="font-semibold text-slate-900">{grant.granteeRole} · {grant.purpose}</div>
+                    <div className="text-xs mt-1">Grant ID: {grant.grantId}</div>
+                    <div className="text-xs">Status: {grant.status}</div>
+                    <div className="text-xs break-all">Expires: {grant.expiresAt || 'n/a'}</div>
+                    <div className="text-xs mt-1">Requested fields: {(grant.requestedFields || []).join(', ') || 'n/a'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <h3 className="font-bold text-slate-900">Metadata & Raw Payload</h3>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <div className="font-semibold text-slate-900">Metadata JSON</div>
+                  <pre className="mt-2 text-[11px] leading-5 whitespace-pre-wrap break-words overflow-auto max-h-72">
+                    {JSON.stringify(details.metadata || {}, null, 2)}
+                  </pre>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <div className="font-semibold text-slate-900">Captured Fragment List</div>
+                  <pre className="mt-2 text-[11px] leading-5 whitespace-pre-wrap break-words overflow-auto max-h-72">
+                    {JSON.stringify(details.victimFragments || [], null, 2)}
+                  </pre>
+                </div>
               </div>
             </div>
 
