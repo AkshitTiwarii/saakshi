@@ -1,0 +1,21 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+pydantic==2.10.4
+requests==2.32.3
+python-dateutil==2.9.0.post0
+numpy==2.2.1
+scikit-learn==1.6.0
+scipy==1.14.1
+pandas==2.2.3
+huggingface_hub==0.27.0
+transformers==4.47.1
+datasets==3.2.0
+torch>=2.10.0
+accelerate==1.2.1
+safetensors>=0.6.2
+# Optional direct installs from referenced repositories (best-effort).
+# Install manually if these fail in your environment.
+# git+https://github.com/NisaarAgharia/Indian-LawyerGPT.git
+# git+https://github.com/raulorteg/molminer.git
+# git+https://github.com/ElleLynn08/trauma-informed-ai-framework.git
+# git+https://github.com/kajee27/smart-distress-monitor.git
