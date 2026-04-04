@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Fingerprint, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Fingerprint, ShieldCheck, Send, MessageCircle, X } from 'lucide-react';
 
 type DetailedCase = {
   caseId: string;
@@ -120,6 +120,42 @@ type RakshaSummarySnapshot = {
   fakeVictimBand?: string;
 };
 
+type OfficerChatMessage = {
+  messageId: string;
+  caseId: string;
+  officerId: string;
+  officerPost: string;
+  officerName: string;
+  role: string;
+  message: string;
+  createdAt: string;
+  direction: 'officer-to-victim' | 'victim-to-officer' | 'system';
+};
+
+type UploadEvidence = {
+  kind: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  uri: string;
+};
+
+function parseUploadEvidence(body: string): UploadEvidence | null {
+  const parts = body.split('|').map((part) => part.trim());
+  if (parts.length < 5) {
+    return null;
+  }
+
+  const sizeCandidate = Number(String(parts[3] || '').replace(/[^0-9]/g, ''));
+  return {
+    kind: parts[0] || 'document',
+    name: parts[1] || 'unnamed',
+    mimeType: parts[2] || 'application/octet-stream',
+    sizeBytes: Number.isFinite(sizeCandidate) ? sizeCandidate : 0,
+    uri: parts.slice(4).join(' | ') || '',
+  };
+}
+
 function parseRakshaSummarySnapshots(fragments: string[] = []): RakshaSummarySnapshot[] {
   const snapshots: RakshaSummarySnapshot[] = [];
 
@@ -166,6 +202,8 @@ export function OfficerCaseWorkspace() {
   const { caseId = '' } = useParams();
   const [searchParams] = useSearchParams();
   const officerId = searchParams.get('officerId') || '';
+  const officerRole = searchParams.get('officerRole') || 'police';
+  const officerPost = searchParams.get('officerPost') || searchParams.get('post') || 'Police Officer';
 
   const [details, setDetails] = useState<DetailedCase | null>(null);
   const [error, setError] = useState('');
@@ -177,6 +215,11 @@ export function OfficerCaseWorkspace() {
   const [verifyError, setVerifyError] = useState('');
   const [verifyResult, setVerifyResult] = useState<IntegrityVerificationResult | null>(null);
   const [grants, setGrants] = useState<ConsentGrantRecord[]>([]);
+  const [chatMessages, setChatMessages] = useState<OfficerChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatStatus, setChatStatus] = useState('Connecting live case channel...');
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatSocketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -188,7 +231,7 @@ export function OfficerCaseWorkspace() {
 
       try {
         const resp = await fetch(
-          `/api/case/${encodeURIComponent(caseId)}/details?officerId=${encodeURIComponent(officerId)}`
+          `/api/case/${encodeURIComponent(caseId)}/details?officerId=${encodeURIComponent(officerId)}&officerRole=${encodeURIComponent(officerRole)}`
         );
         const text = await resp.text();
         const data = JSON.parse(text);
@@ -211,15 +254,93 @@ export function OfficerCaseWorkspace() {
     };
 
     load();
-  }, [caseId, officerId]);
+  }, [caseId, officerId, officerRole]);
 
-  const fragmentGroups = useMemo(() => {
+  useEffect(() => {
+    if (!caseId || !officerId) {
+      return;
+    }
+
+    const socketUrl = `${window.location.origin.replace(/^http/i, 'ws')}/ws/officer-chat?caseId=${encodeURIComponent(
+      caseId
+    )}&role=officer&officerId=${encodeURIComponent(officerId)}&post=${encodeURIComponent(officerPost)}`;
+    const socket = new WebSocket(socketUrl);
+    chatSocketRef.current = socket;
+
+    socket.onopen = () => setChatStatus('Live case channel connected.');
+    socket.onclose = () => setChatStatus('Live case channel disconnected.');
+    socket.onerror = () => setChatStatus('Live case channel error.');
+    socket.onmessage = (event) => {
+      try {
+        const parsed = JSON.parse(String(event.data || '{}')) as {
+          type?: string;
+          messages?: OfficerChatMessage[];
+          message?: OfficerChatMessage;
+          error?: string;
+        };
+
+        if (parsed.type === 'history' && Array.isArray(parsed.messages)) {
+          setChatMessages(parsed.messages.slice(-5));
+          return;
+        }
+
+        if (parsed.type === 'message' && parsed.message) {
+          setChatMessages((current) => [...current, parsed.message!].slice(-5));
+          setChatDraft('');
+          return;
+        }
+
+        if (parsed.type === 'error' && parsed.error) {
+          setChatStatus(parsed.error);
+        }
+      } catch {
+        // Ignore malformed websocket payloads.
+      }
+    };
+
+    return () => {
+      socket.close();
+      chatSocketRef.current = null;
+    };
+  }, [caseId, officerId, officerPost]);
+
+  const sendOfficerMessage = () => {
+    const text = chatDraft.trim();
+    const socket = chatSocketRef.current;
+    if (!text || !socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    socket.send(
+      JSON.stringify({
+        type: 'message',
+        caseId,
+        officerId,
+        officerName: officerId,
+        officerPost,
+        role: 'officer',
+        message: text,
+        createdAt: new Date().toISOString(),
+        direction: 'officer-to-victim',
+      })
+    );
+  };
+
+  const testimonyBuckets = useMemo(() => {
     const source = details?.victimFragments || [];
-    const buckets = {
+    const buckets: {
+      writing: string[];
+      voice: string[];
+      drawing: string[];
+      upload: UploadEvidence[];
+      uploadNotes: string[];
+      other: string[];
+    } = {
       writing: [] as string[],
       voice: [] as string[],
       drawing: [] as string[],
-      upload: [] as string[],
+      upload: [] as UploadEvidence[],
+      uploadNotes: [] as string[],
       other: [] as string[],
     };
 
@@ -231,23 +352,39 @@ export function OfficerCaseWorkspace() {
       const tag = (match?.[1] || '').toLowerCase();
       const body = (match?.[2] || text).trim() || text;
 
+      if (tag === 'voice-meta' || tag === 'draw-meta' || tag === 'raksha-summary-v1') {
+        continue;
+      }
+
+      if (tag === 'upload-file') {
+        const parsed = parseUploadEvidence(body);
+        if (parsed) {
+          buckets.upload.push(parsed);
+        }
+        continue;
+      }
+
+      if (tag === 'upload') {
+        if (body) buckets.uploadNotes.push(body);
+        continue;
+      }
+
       if (tag.includes('voice')) buckets.voice.push(body);
       else if (tag.includes('draw')) buckets.drawing.push(body);
-      else if (tag.includes('upload')) buckets.upload.push(body);
       else if (tag.includes('text') || tag.includes('write') || tag.includes('case-summary') || tag.includes('dashboard-case-brief')) buckets.writing.push(body);
-      else buckets.other.push(text);
+      else if (!tag || (!tag.includes('meta') && !tag.includes('summary'))) buckets.other.push(text);
     }
 
     return buckets;
   }, [details?.victimFragments]);
 
-  const captureSummary = details?.captureSummary || {
+  const captureSummary = {
     totalFragments: details?.victimFragments?.length || 0,
-    writingCount: fragmentGroups.writing.length,
-    voiceCount: fragmentGroups.voice.length,
-    drawingCount: fragmentGroups.drawing.length,
-    uploadCount: fragmentGroups.upload.length,
-    otherCount: fragmentGroups.other.length,
+    writingCount: testimonyBuckets.writing.length,
+    voiceCount: testimonyBuckets.voice.length,
+    drawingCount: testimonyBuckets.drawing.length,
+    uploadCount: testimonyBuckets.upload.length,
+    otherCount: testimonyBuckets.other.length,
     latestSource: String(details?.metadata?.source || 'n/a'),
   };
 
@@ -276,14 +413,15 @@ export function OfficerCaseWorkspace() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': officerId,
-          'x-user-role': 'officer',
+          'x-user-id': `${officerRole}:${officerId}`,
+          'x-user-role': officerRole,
           'x-case-id': caseId,
         },
         body: JSON.stringify({
           caseId,
           audience: 'officer',
           officerId,
+          officerRole,
         }),
       });
       const text = await resp.text();
@@ -300,13 +438,43 @@ export function OfficerCaseWorkspace() {
     }
   };
 
+  const exportEvidenceMaterials = () => {
+    if (!details) return;
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      caseId: details.caseId,
+      caseNumber: details.caseNumber,
+      officerId,
+      officerRole,
+      materials: {
+        writing: testimonyBuckets.writing,
+        voice: testimonyBuckets.voice,
+        drawing: testimonyBuckets.drawing,
+        uploads: testimonyBuckets.upload,
+        uploadNotes: testimonyBuckets.uploadNotes,
+      },
+      captureSummary,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = `evidence-materials-${details.caseNumber || details.caseId}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(objectUrl);
+  };
+
   const verifyIntegrity = async () => {
     if (!caseId || !officerId) return;
     setVerifyLoading(true);
     setVerifyError('');
     try {
       const resp = await fetch(
-        `/api/case/${encodeURIComponent(caseId)}/verify-integrity?officerId=${encodeURIComponent(officerId)}`
+        `/api/case/${encodeURIComponent(caseId)}/verify-integrity?officerId=${encodeURIComponent(officerId)}&officerRole=${encodeURIComponent(officerRole)}`
       );
       const text = await resp.text();
       const data = JSON.parse(text);
@@ -321,51 +489,6 @@ export function OfficerCaseWorkspace() {
       setVerifyLoading(false);
     }
   };
-
-  const testimonyBuckets = useMemo(() => {
-    const source = details?.victimFragments || [];
-    const buckets: {
-      writing: string[];
-      voice: string[];
-      drawing: string[];
-      upload: string[];
-      other: string[];
-    } = {
-      writing: [],
-      voice: [],
-      drawing: [],
-      upload: [],
-      other: [],
-    };
-
-    for (const fragment of source) {
-      const text = String(fragment || '').trim();
-      if (!text) continue;
-
-      const match = text.match(/^\[([^\]]+)\]\s*(.*)$/i);
-      const tag = (match?.[1] || '').toLowerCase();
-      const body = (match?.[2] || text).trim() || text;
-
-      if (tag.includes('voice')) {
-        buckets.voice.push(body);
-      } else if (tag.includes('draw')) {
-        buckets.drawing.push(body);
-      } else if (tag.includes('upload')) {
-        buckets.upload.push(body);
-      } else if (
-        tag.includes('text') ||
-        tag.includes('write') ||
-        tag.includes('case-summary') ||
-        tag.includes('dashboard-case-brief')
-      ) {
-        buckets.writing.push(body);
-      } else {
-        buckets.other.push(text);
-      }
-    }
-
-    return buckets;
-  }, [details?.victimFragments]);
 
   const rakshaSummaries = useMemo(
     () => parseRakshaSummarySnapshots(details?.victimFragments || []),
@@ -447,6 +570,29 @@ export function OfficerCaseWorkspace() {
               {!!reportStatus && <p className="text-sm text-slate-600 mt-3">{reportStatus}</p>}
               {!!verifyError && <p className="text-sm text-rose-700 mt-2">{verifyError}</p>}
               <p className="text-xs text-slate-500 mt-3">The PDF export uses a structured forensic layout with section headers, summary cards, and explicit integrity footer.</p>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <h3 className="font-bold text-slate-900 text-lg">Officer Workflow</h3>
+              <p className="text-xs text-slate-500 mt-1">Use a consistent sequence to keep case handling defensible and fast.</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Step 1</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">Review profile and fragments</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Step 2</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">Verify integrity chain</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-500">Step 3</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">Export calibrated report</div>
+                </div>
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-indigo-500">Step 4</div>
+                  <div className="mt-1 text-sm font-semibold text-indigo-900">Open chat from right button</div>
+                </div>
+              </div>
             </div>
 
             {verifyResult && (
@@ -648,22 +794,6 @@ export function OfficerCaseWorkspace() {
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                <ShieldCheck size={16} /> Victim Fragments
-              </h3>
-              <div className="mt-3 space-y-2">
-                {(details.victimFragments || []).length === 0 && (
-                  <p className="text-sm text-slate-600">No fragments submitted yet.</p>
-                )}
-                {(details.victimFragments || []).map((item, idx) => (
-                  <div key={`${idx}-${item.slice(0, 12)}`} className="text-sm text-slate-700 border border-slate-200 rounded-lg p-3 bg-slate-50">
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-5">
               <h3 className="font-bold text-slate-900">Consent Grants</h3>
               <div className="mt-3 space-y-2">
                 {grants.length === 0 && <p className="text-sm text-slate-600">No consent grants found for this case.</p>}
@@ -680,25 +810,16 @@ export function OfficerCaseWorkspace() {
             </div>
 
             <div className="bg-white border border-slate-200 rounded-2xl p-5">
-              <h3 className="font-bold text-slate-900">Metadata & Raw Payload</h3>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
-                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
-                  <div className="font-semibold text-slate-900">Metadata JSON</div>
-                  <pre className="mt-2 text-[11px] leading-5 whitespace-pre-wrap break-words overflow-auto max-h-72">
-                    {JSON.stringify(details.metadata || {}, null, 2)}
-                  </pre>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
-                  <div className="font-semibold text-slate-900">Captured Fragment List</div>
-                  <pre className="mt-2 text-[11px] leading-5 whitespace-pre-wrap break-words overflow-auto max-h-72">
-                    {JSON.stringify(details.victimFragments || [], null, 2)}
-                  </pre>
-                </div>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-bold text-slate-900">Testimonies By Type</h3>
+                <button
+                  type="button"
+                  onClick={exportEvidenceMaterials}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold"
+                >
+                  Export Materials JSON
+                </button>
               </div>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-2xl p-5">
-              <h3 className="font-bold text-slate-900">Testimonies By Type</h3>
               <p className="text-xs text-slate-500 mt-1">Officer-ready grouping for writing, voice, drawing, and uploaded evidence.</p>
               <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
@@ -734,8 +855,40 @@ export function OfficerCaseWorkspace() {
                 <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
                   <div className="text-sm font-semibold text-slate-900">Uploads ({testimonyBuckets.upload.length})</div>
                   <div className="mt-2 space-y-2">
-                    {testimonyBuckets.upload.slice(0, 8).map((item, idx) => (
-                      <div key={`up-${idx}`} className="text-xs text-slate-700">{idx + 1}. {item}</div>
+                    {testimonyBuckets.upload.slice(0, 8).map((item, idx) => {
+                      const sizeKb = item.sizeBytes > 0 ? Math.max(1, Math.round(item.sizeBytes / 1024)) : 0;
+                      const isImage = item.kind.toLowerCase() === 'image' || item.mimeType.toLowerCase().startsWith('image/');
+                      return (
+                        <div key={`up-${idx}-${item.name}`} className="rounded-lg border border-slate-200 bg-white p-2">
+                          <div className="text-xs font-semibold text-slate-900">{idx + 1}. {item.name}</div>
+                          <div className="text-[11px] text-slate-600 mt-1">
+                            {item.kind.toUpperCase()} • {item.mimeType}{sizeKb > 0 ? ` • ${sizeKb} KB` : ''}
+                          </div>
+                          {isImage && !!item.uri && (
+                            <div className="mt-2">
+                              <img
+                                src={item.uri}
+                                alt={item.name}
+                                className="h-24 w-full rounded-md border border-slate-200 object-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          )}
+                          {!!item.uri && (
+                            <a
+                              href={item.uri}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-block mt-2 text-[11px] font-semibold text-indigo-700"
+                            >
+                              Open file
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {testimonyBuckets.uploadNotes.slice(0, 2).map((note, idx) => (
+                      <div key={`up-note-${idx}`} className="text-xs text-slate-600">Note: {note}</div>
                     ))}
                     {testimonyBuckets.upload.length === 0 && <div className="text-xs text-slate-500">No uploaded evidence testimony yet.</div>}
                   </div>
@@ -753,6 +906,26 @@ export function OfficerCaseWorkspace() {
                 </div>
               )}
             </div>
+
+            <details className="bg-white border border-slate-200 rounded-2xl p-5">
+              <summary className="cursor-pointer font-bold text-slate-900 flex items-center gap-2">
+                <ShieldCheck size={16} /> Technical Payload (Optional)
+              </summary>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-700">
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <div className="font-semibold text-slate-900">Metadata JSON</div>
+                  <pre className="mt-2 text-[11px] leading-5 whitespace-pre-wrap break-words overflow-auto max-h-72">
+                    {JSON.stringify(details.metadata || {}, null, 2)}
+                  </pre>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                  <div className="font-semibold text-slate-900">Captured Fragment List</div>
+                  <pre className="mt-2 text-[11px] leading-5 whitespace-pre-wrap break-words overflow-auto max-h-72">
+                    {JSON.stringify(details.victimFragments || [], null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </details>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white border border-slate-200 rounded-2xl p-5">
@@ -838,6 +1011,113 @@ export function OfficerCaseWorkspace() {
                 </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setChatOpen(true)}
+              className="fixed right-6 bottom-6 z-40 h-14 w-14 rounded-full bg-indigo-700 text-white shadow-[0_16px_36px_rgba(55,48,163,0.45)] flex items-center justify-center hover:brightness-105"
+              aria-label="Open case chat"
+              title="Open case chat"
+            >
+              <MessageCircle size={22} />
+              {chatMessages.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {chatMessages.length}
+                </span>
+              )}
+            </button>
+
+            {chatOpen && (
+              <div className="fixed inset-0 z-50">
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/30"
+                  onClick={() => setChatOpen(false)}
+                  aria-label="Close chat overlay"
+                />
+
+                <div className="absolute right-4 top-4 bottom-4 w-[min(92vw,420px)] rounded-2xl border border-slate-200 bg-white shadow-2xl flex flex-col overflow-hidden">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                    <div>
+                      <h4 className="font-bold text-slate-900">Case Chat</h4>
+                      <p className="text-xs text-slate-500">{chatStatus}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="h-9 w-9 rounded-full border border-slate-300 text-slate-600 flex items-center justify-center"
+                      onClick={() => setChatOpen(false)}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="px-4 py-2 text-[11px] font-semibold text-slate-500 text-center border-b border-slate-100">
+                    {officerPost} • {officerId}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-slate-50">
+                    {chatMessages.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-600 text-center">
+                        No messages yet.
+                      </div>
+                    ) : (
+                      chatMessages.map((message) => (
+                        <div
+                          key={message.messageId}
+                          className={`flex items-end gap-2 ${
+                            message.direction === 'victim-to-officer' ? 'justify-end' : 'justify-start'
+                          }`}
+                        >
+                          {message.direction !== 'victim-to-officer' && (
+                            <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center">
+                              {(message.officerName || message.officerPost || 'O').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+
+                          <div
+                            className={`max-w-[80%] rounded-2xl border p-3 ${
+                              message.direction === 'victim-to-officer'
+                                ? 'bg-amber-50 border-amber-200'
+                                : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <div className="text-[11px] font-semibold text-slate-500">
+                              {message.officerName} • {message.officerPost}
+                            </div>
+                            <div className="mt-1 text-sm text-slate-800 leading-relaxed">{message.message}</div>
+                            <div className="mt-2 text-[10px] text-slate-500 text-right">
+                              {new Date(message.createdAt).toLocaleTimeString()}
+                            </div>
+                          </div>
+
+                          {message.direction === 'victim-to-officer' && (
+                            <div className="h-8 w-8 rounded-full bg-amber-100 text-amber-700 text-xs font-bold flex items-center justify-center">
+                              {(message.officerName || 'V').slice(0, 1).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-200 p-3 bg-white flex gap-2">
+                    <textarea
+                      value={chatDraft}
+                      onChange={(e) => setChatDraft(e.target.value)}
+                      placeholder="Type a message..."
+                      className="min-h-[72px] flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                    />
+                    <button
+                      onClick={sendOfficerMessage}
+                      disabled={!chatDraft.trim()}
+                      className="self-end inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-700 px-3 py-2 text-white font-semibold disabled:opacity-50"
+                    >
+                      <Send size={15} /> Send
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

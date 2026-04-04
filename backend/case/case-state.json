@@ -99,18 +99,24 @@
           "phone": "9999999999",
           "emergencyContact": "100",
           "incidentSummary": "I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
-          "updatedAt": "2026-04-04T11:20:12.334Z"
+          "updatedAt": "2026-04-04T22:02:13.482Z"
         },
         "fragments": [
           "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
           "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
-          "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days."
+          "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
+          "[draw] Sketch with 1 stroke(s), brush width 4",
+          "[draw-meta] strokes=1 brush=4 color=#1E2330",
+          "[draw] Sketch with 79 stroke(s), brush width 4",
+          "[draw-meta] strokes=79 brush=4 color=#1E2330",
+          "[draw] Sketch with 79 stroke(s), brush width 4",
+          "[draw-meta] strokes=79 brush=4 color=#1E2330"
         ],
         "metadata": {
           "authProvider": "google",
           "onboardingCompleted": false,
-          "lastUpdatedAt": "2026-04-04T11:20:12.334Z",
-          "source": "mobile-dashboard-case-brief"
+          "lastUpdatedAt": "2026-04-04T22:02:13.482Z",
+          "source": "mobile-capture-draw"
         }
       }
     ],
@@ -263,6 +269,78 @@
           "createdAt": "2026-04-04T11:20:12.335Z",
           "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
           "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-e25c3d79-f70f-41c9-a32b-b0f6eea2fadc",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "2156d6915da918235035e441248a913f7e69e19d51f39bb6a3c0f865b133a635",
+          "currentHash": "7a477019e9b3a98af42e61e7155580d726a86ab16279a3fdd9f930e3cc9abaf2",
+          "createdAt": "2026-04-04T18:24:13.394Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-5f3f55bd-abe1-485c-b81c-a834fd9f10a3",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "7a477019e9b3a98af42e61e7155580d726a86ab16279a3fdd9f930e3cc9abaf2",
+          "currentHash": "873bfdb0990f393fc35bb1b9a439fd45aca362ee3609d3f31f15b46ae0e4c3f9",
+          "createdAt": "2026-04-04T18:24:13.396Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-ee997f48-a1d3-49fe-a7e4-0fb9231a89a7",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "873bfdb0990f393fc35bb1b9a439fd45aca362ee3609d3f31f15b46ae0e4c3f9",
+          "currentHash": "ad747930481b64f34debe7223bd773a0f6ff553b93924f78611a8369b045690a",
+          "createdAt": "2026-04-04T21:51:24.056Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-9022ec09-11ab-4d31-aebe-31dd11cd370e",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "ad747930481b64f34debe7223bd773a0f6ff553b93924f78611a8369b045690a",
+          "currentHash": "5b051f1048a2d0d843dd06c688c3e7cc9251262b33ae65790ffa7ce913641ab1",
+          "createdAt": "2026-04-04T21:51:24.057Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-623338b8-0856-4ffd-a3cd-4403af3af0de",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "5b051f1048a2d0d843dd06c688c3e7cc9251262b33ae65790ffa7ce913641ab1",
+          "currentHash": "95c5583ac6453b0345482006cabdd96581bee46fa7ea9fec7e66b318ef515dd7",
+          "createdAt": "2026-04-04T21:55:28.990Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-4d883eb1-4529-4d24-a36d-42553fe7f1b9",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "95c5583ac6453b0345482006cabdd96581bee46fa7ea9fec7e66b318ef515dd7",
+          "currentHash": "e67388aba1b0df113341ed51f849f7f1d755cfeca528c3680234e22a8af9c62b",
+          "createdAt": "2026-04-04T21:55:28.990Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-2d215ee5-c890-4c33-bda0-58ada0e354e4",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "e67388aba1b0df113341ed51f849f7f1d755cfeca528c3680234e22a8af9c62b",
+          "currentHash": "05ff079fd80d6d38c381a573e7aae26645f907a85e50dbd58c4edd4337170e68",
+          "createdAt": "2026-04-04T22:02:13.482Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-6ccf0645-bd14-491f-bffc-ac87125528c6",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "05ff079fd80d6d38c381a573e7aae26645f907a85e50dbd58c4edd4337170e68",
+          "currentHash": "b19757d2ab0ae0cc91a557b43798398244737da45a8aa2fcf9306302a699ce57",
+          "createdAt": "2026-04-04T22:02:13.482Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
         }
       ]
     ],
@@ -291,6 +369,51 @@
           "createdAt": "2026-04-04T06:58:33.357Z",
           "actorId": "web-guest-42jacwwfaj",
           "payloadType": "victim_profile"
+        }
+      ]
+    ]
+  ],
+  "caseChatMessagesByCase": [
+    [
+      "demo-case-001",
+      [
+        {
+          "messageId": "chat-7fca515b-f5da-4bc7-b51c-3630cab721c6",
+          "caseId": "demo-case-001",
+          "officerId": "OFF-123",
+          "officerPost": "Police Officer",
+          "officerName": "Inspector Rao",
+          "role": "officer",
+          "message": "Please review the CCTV near the market and confirm the time window.",
+          "createdAt": "2026-04-04T21:09:55.131Z",
+          "direction": "officer-to-victim"
+        }
+      ]
+    ],
+    [
+      "584b6b23-aeb8-4884-86af-38b9367c09ae",
+      [
+        {
+          "messageId": "chat-2013e433-c3ce-4411-b6df-1586034f8a1b",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "officerId": "OFF-IND-221",
+          "officerPost": "Police Officer",
+          "officerName": "OFF-IND-221",
+          "role": "officer",
+          "message": "Hi",
+          "createdAt": "2026-04-04T21:32:15.528Z",
+          "direction": "officer-to-victim"
+        },
+        {
+          "messageId": "chat-0261d063-b5a2-4bd7-80af-f118036b2107",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "officerId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "officerPost": "victim",
+          "officerName": "Akshit Tiwari",
+          "role": "victim",
+          "message": "Hi'",
+          "createdAt": "2026-04-04T21:37:02.408Z",
+          "direction": "victim-to-officer"
         }
       ]
     ]

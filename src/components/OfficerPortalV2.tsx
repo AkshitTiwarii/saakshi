@@ -86,6 +86,7 @@ export function OfficerPortalV2() {
   const navigate = useNavigate();
   const [officerId, setOfficerId] = useState('OFF-IND-221');
   const [role, setRole] = useState('Police Officer');
+  const actorRole = role === 'Lawyer' ? 'lawyer' : 'police';
   const [assignedCases, setAssignedCases] = useState<CaseAssignment[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [isLoadingCases, setIsLoadingCases] = useState(false);
@@ -107,7 +108,7 @@ export function OfficerPortalV2() {
         const resp = await fetch('/api/officer/list-assigned-cases', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ officerId: officerId.trim() }),
+          body: JSON.stringify({ officerId: officerId.trim(), role: actorRole }),
         });
 
         if (!resp.ok) {
@@ -126,7 +127,7 @@ export function OfficerPortalV2() {
     };
 
     loadCases();
-  }, [officerId]);
+  }, [officerId, actorRole]);
 
   const verifyAccess = async (caseId: string) => {
     setIsVerifying(true);
@@ -139,8 +140,8 @@ export function OfficerPortalV2() {
         body: JSON.stringify({
           officerId: officerId.trim(),
           caseId,
-          role: role === 'Police Officer' ? 'police' : 'lawyer',
-          purpose: role === 'Police Officer' ? 'police_share' : 'lawyer_share',
+          role: actorRole,
+          purpose: actorRole === 'police' ? 'police_share' : 'lawyer_share',
           requestedFields: ['full_case_timeline', 'victim_media', 'ai_analysis'],
         }),
       });
@@ -150,7 +151,7 @@ export function OfficerPortalV2() {
 
       if (data.approved) {
         const detailsResp = await fetch(
-          `/api/case/${encodeURIComponent(caseId)}/details?officerId=${encodeURIComponent(officerId.trim())}`
+          `/api/case/${encodeURIComponent(caseId)}/details?officerId=${encodeURIComponent(officerId.trim())}&officerRole=${encodeURIComponent(actorRole)}`
         );
         if (!detailsResp.ok) {
           throw new Error('Case details fetch failed after access approval');
@@ -163,7 +164,7 @@ export function OfficerPortalV2() {
         navigate(
           `/officer-portal/case/${encodeURIComponent(caseId)}?officerId=${encodeURIComponent(
             officerId.trim()
-          )}`
+          )}&officerPost=${encodeURIComponent(role)}&officerRole=${encodeURIComponent(actorRole)}`
         );
       } else {
         setSelectedCaseId(null);

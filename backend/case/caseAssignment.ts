@@ -149,6 +149,13 @@ export function checkRoleScope(
   purpose: string,
   designation: OfficerDesignation
 ): { passed: boolean; reason: string } {
+  if (role !== 'admin' && designation.role !== role) {
+    return {
+      passed: false,
+      reason: `Designation role ${designation.role} does not match requested role ${role}`,
+    };
+  }
+
   // Admin can do anything
   if (role === 'admin') {
     return { passed: true, reason: 'Admin role unrestricted' };

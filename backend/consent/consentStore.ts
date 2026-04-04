@@ -66,13 +66,19 @@ export function hasActiveGrant(params: {
   purpose: ConsentPurpose;
 }) {
   const now = Date.now();
+  const normalizedActorId = String(params.actorId || "").trim();
+  const scopedActorId = `${params.actorRole}:${normalizedActorId}`;
+
   return readAll().some((grant) => {
     if (grant.caseId !== params.caseId) return false;
     if (grant.status !== "active") return false;
     if (grant.purpose !== params.purpose) return false;
 
     const roleAllowed = grant.granteeRole === params.actorRole;
-    const actorAllowed = !grant.granteeActorId || grant.granteeActorId === params.actorId;
+    const actorAllowed =
+      !grant.granteeActorId ||
+      grant.granteeActorId === normalizedActorId ||
+      grant.granteeActorId === scopedActorId;
     if (!(roleAllowed && actorAllowed)) return false;
 
     if (!grant.expiresAt) return true;

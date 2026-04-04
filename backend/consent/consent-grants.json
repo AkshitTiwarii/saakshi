@@ -6,8 +6,15 @@
     "granteeActorId": "OFF-IND-221",
     "granteeRole": "police",
     "purpose": "police_share",
-    "requestedFields": ["full_case_timeline", "victim_media", "ai_analysis"],
-    "redactions": ["therapy_notes", "private_journal"],
+    "requestedFields": [
+      "full_case_timeline",
+      "victim_media",
+      "ai_analysis"
+    ],
+    "redactions": [
+      "therapy_notes",
+      "private_journal"
+    ],
     "policyVersion": "0.1.0-stub",
     "status": "active",
     "createdAt": "2026-03-26T00:00:00.000Z"
@@ -19,7 +26,11 @@
     "granteeActorId": "ADV-LEGAL-72",
     "granteeRole": "lawyer",
     "purpose": "lawyer_share",
-    "requestedFields": ["full_case_timeline", "victim_media", "ai_analysis"],
+    "requestedFields": [
+      "full_case_timeline",
+      "victim_media",
+      "ai_analysis"
+    ],
     "redactions": [],
     "policyVersion": "0.1.0-stub",
     "status": "active",
@@ -32,10 +43,119 @@
     "granteeActorId": "OFF-IND-331",
     "granteeRole": "police",
     "purpose": "analysis",
-    "requestedFields": ["full_case_timeline", "victim_media", "ai_analysis"],
-    "redactions": ["therapy_notes", "private_journal"],
+    "requestedFields": [
+      "full_case_timeline",
+      "victim_media",
+      "ai_analysis"
+    ],
+    "redactions": [
+      "therapy_notes",
+      "private_journal"
+    ],
     "policyVersion": "0.1.0-stub",
     "status": "active",
     "createdAt": "2026-03-26T00:00:00.000Z"
+  },
+  {
+    "grantId": "grant-cf49994e-5110-439d-9cac-c4411816007e",
+    "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+    "grantedByActorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "legal_export",
+    "requestedFields": [
+      "report_pdf",
+      "evidence_manifest",
+      "integrity_hashes"
+    ],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-04-04T22:24:29.486Z"
+  },
+  {
+    "grantId": "grant-4d7e7896-856f-4882-ad36-42a2342cd740",
+    "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+    "grantedByActorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "legal_export",
+    "requestedFields": [
+      "report_pdf",
+      "evidence_manifest",
+      "integrity_hashes"
+    ],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-04-04T22:25:43.266Z"
+  },
+  {
+    "grantId": "grant-606c7d2c-f1cd-47fd-8b59-cc0a285e4067",
+    "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+    "grantedByActorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "legal_export",
+    "requestedFields": [
+      "report_pdf",
+      "evidence_manifest",
+      "integrity_hashes"
+    ],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-04-04T22:31:25.376Z"
+  },
+  {
+    "grantId": "grant-f01e1a16-4148-44e0-aeeb-50513cafd1b4",
+    "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+    "grantedByActorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "legal_export",
+    "requestedFields": [
+      "report_pdf",
+      "evidence_manifest",
+      "integrity_hashes"
+    ],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-04-04T22:33:53.071Z"
+  },
+  {
+    "grantId": "grant-993f2584-2b72-4aea-aa9a-b39c41abd7a3",
+    "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+    "grantedByActorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "legal_export",
+    "requestedFields": [
+      "report_pdf",
+      "evidence_manifest",
+      "integrity_hashes"
+    ],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-04-04T22:35:12.558Z"
+  },
+  {
+    "grantId": "grant-e5532c95-9257-419a-949b-f783db8323e5",
+    "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+    "grantedByActorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "legal_export",
+    "requestedFields": [
+      "report_pdf",
+      "evidence_manifest",
+      "integrity_hashes"
+    ],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-04-04T22:37:41.899Z"
   }
 ]

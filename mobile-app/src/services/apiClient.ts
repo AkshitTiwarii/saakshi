@@ -8,8 +8,17 @@ import {
   setStoredSession,
 } from "./localVault";
 
-const BASE_URL = Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
+const ENV_BASE_URL = String((globalThis as any)?.process?.env?.EXPO_PUBLIC_API_BASE_URL || "").trim();
+const BASE_URL = ENV_BASE_URL || (Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000");
 const REQUEST_TIMEOUT_MS = 12000;
+
+export function getApiBaseUrl() {
+  return BASE_URL;
+}
+
+export function getWebSocketBaseUrl() {
+  return BASE_URL.replace(/^http/i, "ws");
+}
 
 export type ReportExportAudience = "victim" | "officer";
 
@@ -466,6 +475,46 @@ export function evaluateConsentForAnalysis(caseId: string) {
   });
 }
 
+export function grantOfficerExportAccessForCurrentCase(params: {
+  officerId: string;
+  officerRole: "police" | "lawyer";
+  expiresAt?: string;
+}) {
+  if (!victimSession) {
+    throw new Error("Victim session not initialized. Complete onboarding first.");
+  }
+
+  const caseId = victimSession.caseId;
+  const grantedByActorId = victimSession.victimUniqueId;
+  const requestedFields = ["report_pdf", "evidence_manifest", "integrity_hashes"];
+
+  return request<{
+    grantId: string;
+    caseId: string;
+    granteeActorId?: string;
+    granteeRole: string;
+    purpose: string;
+    status: string;
+    expiresAt?: string;
+  }>("/api/consent/grant", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+      "x-user-id": grantedByActorId,
+      "x-user-role": "survivor",
+    },
+    body: JSON.stringify({
+      caseId,
+      grantedByActorId,
+      granteeActorId: params.officerId,
+      granteeRole: params.officerRole,
+      purpose: "legal_export",
+      requestedFields,
+      expiresAt: params.expiresAt || undefined,
+    }),
+  });
+}
+
 export function classifyFragment(caseId: string, content: string) {
   return request<{ emotion?: string; time?: string; location?: string }>("/api/ai/classify-fragment", {
     method: "POST",
@@ -539,9 +588,12 @@ export function searchEvidence(caseId: string, query: string) {
       "x-case-id": caseId,
     },
     body: JSON.stringify({ caseId, query }),
-  }).catch(() => ({
-    text: "Evidence search is temporarily in local mode. You can continue capturing fragments.",
-  }));
+  }, 45000).catch((error) => {
+    const message = (error as Error)?.message || "Evidence search request failed.";
+    throw new Error(
+      `${message} (API base: ${BASE_URL}). If using a physical Android device, set EXPO_PUBLIC_API_BASE_URL to your machine LAN URL, e.g. http://192.168.x.x:3000.`
+    );
+  });
 }
 
 export function searchEvidenceForCurrentCase(query: string) {

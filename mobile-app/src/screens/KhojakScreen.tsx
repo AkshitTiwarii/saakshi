@@ -122,8 +122,10 @@ export function KhojakScreen({ navigation }: Props) {
         peopleClues: nlpRes.clues.people,
         sentiment: nlpRes.sentiment.label,
       });
-    } catch {
-      const fallback = "Khojak live search is unavailable right now. Your query and previous clues are saved locally.";
+    } catch (error) {
+      const fallback =
+        (error as Error)?.message ||
+        "Khojak live search is unavailable right now. Your query and previous clues are saved locally.";
       setResult(fallback);
       void saveScreenDraft("khojak.result", fallback);
     } finally {
@@ -274,6 +276,9 @@ export function KhojakScreen({ navigation }: Props) {
           placeholderTextColor={colors.mutedInk}
           style={styles.input}
         />
+        <Text style={styles.smallBody}>
+          Example: I was near a busy market area in Pune after sunset and it rained before the incident. Please find location clues and next verification steps.
+        </Text>
         <Pressable style={styles.button} onPress={runSearch}>
           <Text style={styles.buttonLabel}>{loading ? "Searching..." : "Search Evidence"}</Text>
         </Pressable>

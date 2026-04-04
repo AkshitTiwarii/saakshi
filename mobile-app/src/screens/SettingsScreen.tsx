@@ -7,6 +7,7 @@ import { BottomNav } from "../components/BottomNav";
 import { colors } from "../theme/colors";
 import {
   exportCaseReportForCurrentCase,
+  grantOfficerExportAccessForCurrentCase,
   getVictimSession,
   loadScreenDraft,
   saveScreenDraft,
@@ -25,6 +26,9 @@ export function SettingsScreen({ navigation }: Props) {
   const [emergencyContact, setEmergencyContact] = useState("");
   const [incidentSummary, setIncidentSummary] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
+  const [grantOfficerId, setGrantOfficerId] = useState("");
+  const [grantOfficerRole, setGrantOfficerRole] = useState<"police" | "lawyer">("police");
+  const [grantBusy, setGrantBusy] = useState(false);
   const victimSession = getVictimSession();
   const caseNumber = victimSession?.caseNumber || "SAAKSHI-PENDING";
   const saakshiId = caseNumber.replace("SAAK", "SKS");
@@ -38,14 +42,50 @@ export function SettingsScreen({ navigation }: Props) {
       loadScreenDraft("settings.phone"),
       loadScreenDraft("settings.emergencyContact"),
       loadScreenDraft("settings.incidentSummary"),
+      loadScreenDraft("settings.grantOfficerId"),
+      loadScreenDraft("settings.grantOfficerRole"),
     ])
-      .then(([savedPhone, savedEmergency, savedSummary]) => {
+      .then(([savedPhone, savedEmergency, savedSummary, savedGrantOfficerId, savedGrantOfficerRole]) => {
         if (savedPhone) setPhone(savedPhone);
         if (savedEmergency) setEmergencyContact(savedEmergency);
         if (savedSummary) setIncidentSummary(savedSummary);
+        if (savedGrantOfficerId) setGrantOfficerId(savedGrantOfficerId);
+        if (savedGrantOfficerRole === "police" || savedGrantOfficerRole === "lawyer") {
+          setGrantOfficerRole(savedGrantOfficerRole);
+        }
       })
       .catch(() => undefined);
   }, []);
+
+  const onGrantOfficerExportAccess = async () => {
+    if (!victimSession) {
+      Alert.alert("Case unavailable", "Complete onboarding before granting officer access.");
+      return;
+    }
+
+    const cleanOfficerId = grantOfficerId.trim();
+    if (!cleanOfficerId) {
+      Alert.alert("Officer ID required", "Enter the officer ID before granting access.");
+      return;
+    }
+
+    setGrantBusy(true);
+    try {
+      const grant = await grantOfficerExportAccessForCurrentCase({
+        officerId: cleanOfficerId,
+        officerRole: grantOfficerRole,
+      });
+
+      Alert.alert(
+        "Access granted",
+        `Grant ${grant.grantId.slice(0, 12)} created for ${grantOfficerRole.toUpperCase()} officer ${cleanOfficerId}.`
+      );
+    } catch (error) {
+      Alert.alert("Grant failed", (error as Error).message || "Unable to grant export access.");
+    } finally {
+      setGrantBusy(false);
+    }
+  };
 
   const onSaveCaseDetails = async () => {
     if (!victimSession) {
@@ -148,6 +188,49 @@ export function SettingsScreen({ navigation }: Props) {
 
           <Pressable style={styles.buttonGhost} onPress={onSaveCaseDetails}>
             <Text style={styles.buttonGhostLabel}>{savingProfile ? "Saving details..." : "Save Case Details"}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Grant Officer Report Access</Text>
+          <Text style={styles.value}>Authorize a specific officer/lawyer to download your legal PDF exports.</Text>
+
+          <Text style={styles.label}>Officer ID</Text>
+          <TextInput
+            value={grantOfficerId}
+            onChangeText={(value) => {
+              setGrantOfficerId(value);
+              void saveScreenDraft("settings.grantOfficerId", value);
+            }}
+            placeholder="OFF-IND-221"
+            placeholderTextColor={colors.mutedInk}
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>Officer Role</Text>
+          <View style={styles.roleRow}>
+            <Pressable
+              onPress={() => {
+                setGrantOfficerRole("police");
+                void saveScreenDraft("settings.grantOfficerRole", "police");
+              }}
+              style={[styles.roleChip, grantOfficerRole === "police" ? styles.roleChipActive : null]}
+            >
+              <Text style={[styles.roleChipText, grantOfficerRole === "police" ? styles.roleChipTextActive : null]}>Police</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setGrantOfficerRole("lawyer");
+                void saveScreenDraft("settings.grantOfficerRole", "lawyer");
+              }}
+              style={[styles.roleChip, grantOfficerRole === "lawyer" ? styles.roleChipActive : null]}
+            >
+              <Text style={[styles.roleChipText, grantOfficerRole === "lawyer" ? styles.roleChipTextActive : null]}>Lawyer</Text>
+            </Pressable>
+          </View>
+
+          <Pressable style={styles.buttonGhost} onPress={onGrantOfficerExportAccess}>
+            <Text style={styles.buttonGhostLabel}>{grantBusy ? "Granting access..." : "Grant PDF Export Access"}</Text>
           </Pressable>
         </View>
 
@@ -310,6 +393,31 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontWeight: "700",
     fontSize: 15,
+  },
+  roleRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  roleChip: {
+    flex: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: "#F4F6FB",
+  },
+  roleChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: "#E8F0FF",
+  },
+  roleChipText: {
+    color: colors.mutedInk,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  roleChipTextActive: {
+    color: colors.accent,
   },
   buttonDanger: {
     backgroundColor: "#3A0D14",

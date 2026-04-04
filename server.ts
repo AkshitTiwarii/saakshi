@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
+import { createServer as createHttpServer } from "http";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -9,6 +10,7 @@ import { LanguageServiceClient } from "@google-cloud/language";
 import { SpeechClient } from "@google-cloud/speech";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { GoogleGenAI, Type } from "@google/genai";
+import { WebSocketServer, WebSocket } from "ws";
 import { buildAuditEvent, logAuditEvent } from "./backend/audit/auditLogger";
 import { evaluateConsent, getConsentPolicySummary } from "./backend/consent/consentPolicy";
 import { createGrant, listGrantsByCase, revokeGrant } from "./backend/consent/consentStore";
@@ -61,8 +63,22 @@ type CaseIntegrityEntry = {
   payloadType: "victim_profile" | "victim_fragments";
 };
 
+type OfficerChatMessage = {
+  messageId: string;
+  caseId: string;
+  officerId: string;
+  officerPost: string;
+  officerName: string;
+  role: string;
+  message: string;
+  createdAt: string;
+  direction: "officer-to-victim" | "victim-to-officer" | "system";
+};
+
 const victimDetailsByCase = new Map<string, VictimCasePayload>();
 const caseIntegrityByCase = new Map<string, CaseIntegrityEntry[]>();
+const caseChatMessagesByCase = new Map<string, OfficerChatMessage[]>();
+const caseChatClientsByCase = new Map<string, Set<WebSocket>>();
 const reportFileById = new Map<string, string>();
 const reportBufferById = new Map<string, Uint8Array>();
 
@@ -73,12 +89,73 @@ const mlServiceUrl = (process.env.ML_SERVICE_URL || "http://127.0.0.1:8001").rep
 const caseStateEncryptionSecret = String(process.env.CASE_STATE_ENCRYPTION_KEY || "").trim();
 const enableFakeVictimAssessment = String(process.env.ENABLE_FAKE_VICTIM_ASSESSMENT || "false").toLowerCase() === "true";
 
+type OfficerRoleToken = "police" | "lawyer" | "admin";
+
+function normalizeOfficerRoleToken(value: string): OfficerRoleToken {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("lawyer")) return "lawyer";
+  if (normalized.includes("admin")) return "admin";
+  return "police";
+}
+
+function toScopedOfficerActorId(officerId: string, role: string): string {
+  return `${normalizeOfficerRoleToken(role)}:${String(officerId || "").trim()}`;
+}
+
+function isDesignationActiveForOfficer(params: {
+  caseId: string;
+  officerIdRaw: string;
+  officerRole: string;
+  designation: OfficerDesignation;
+}) {
+  const normalizedRole = normalizeOfficerRoleToken(params.officerRole);
+  const scopedOfficerActorId = toScopedOfficerActorId(params.officerIdRaw, normalizedRole);
+  const idMatches =
+    params.designation.officerId === scopedOfficerActorId ||
+    params.designation.officerId === params.officerIdRaw;
+
+  return (
+    params.designation.caseId === params.caseId &&
+    params.designation.role === normalizedRole &&
+    idMatches &&
+    params.designation.status === "active" &&
+    (!params.designation.expiresAt || new Date(params.designation.expiresAt) > new Date())
+  );
+}
+
+function hasActorGrant(params: {
+  caseId: string;
+  officerIdRaw: string;
+  officerRole: string;
+  purpose: "police_share" | "lawyer_share" | "legal_export";
+}) {
+  const normalizedRole = normalizeOfficerRoleToken(params.officerRole);
+  const scopedOfficerActorId = toScopedOfficerActorId(params.officerIdRaw, normalizedRole);
+  const now = Date.now();
+
+  return listGrantsByCase(params.caseId).some((grant) => {
+    if (grant.status !== "active") return false;
+    if (grant.purpose !== params.purpose) return false;
+    if (grant.granteeRole !== normalizedRole) return false;
+
+    const actorAllowed =
+      !grant.granteeActorId ||
+      grant.granteeActorId === scopedOfficerActorId ||
+      grant.granteeActorId === params.officerIdRaw;
+    if (!actorAllowed) return false;
+
+    if (!grant.expiresAt) return true;
+    return new Date(grant.expiresAt).getTime() > now;
+  });
+}
+
 type PersistedCaseState = {
   caseAssignments: CaseAssignment[];
   officerDesignations: OfficerDesignation[];
   victimCaseMap: Array<[string, string]>;
   victimDetailsByCase: Array<[string, VictimCasePayload]>;
   caseIntegrityByCase: Array<[string, CaseIntegrityEntry[]]>;
+  caseChatMessagesByCase?: Array<[string, OfficerChatMessage[]]>;
 };
 
 type EncryptedPersistedCaseState = {
@@ -148,6 +225,7 @@ function persistCaseState() {
       victimCaseMap: Array.from(victimCaseMap.entries()),
       victimDetailsByCase: Array.from(victimDetailsByCase.entries()),
       caseIntegrityByCase: Array.from(caseIntegrityByCase.entries()),
+      caseChatMessagesByCase: Array.from(caseChatMessagesByCase.entries()),
     };
 
     const shouldEncrypt = !!getCaseStateEncryptionKey();
@@ -176,6 +254,7 @@ function loadPersistedCaseState() {
     victimCaseMap.clear();
     victimDetailsByCase.clear();
     caseIntegrityByCase.clear();
+    caseChatMessagesByCase.clear();
     officerDesignations.splice(0, officerDesignations.length);
 
     for (const item of parsed.caseAssignments || []) {
@@ -199,6 +278,12 @@ function loadPersistedCaseState() {
     for (const tuple of parsed.caseIntegrityByCase || []) {
       if (Array.isArray(tuple) && tuple.length === 2 && Array.isArray(tuple[1])) {
         caseIntegrityByCase.set(String(tuple[0]), tuple[1]);
+      }
+    }
+
+    for (const tuple of parsed.caseChatMessagesByCase || []) {
+      if (Array.isArray(tuple) && tuple.length === 2 && Array.isArray(tuple[1])) {
+        caseChatMessagesByCase.set(String(tuple[0]), tuple[1] as OfficerChatMessage[]);
       }
     }
 
@@ -302,6 +387,44 @@ function queueHashAnchorJob(params: {
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function getChatHistory(caseId: string) {
+  return caseChatMessagesByCase.get(caseId) || [];
+}
+
+function setChatHistory(caseId: string, messages: OfficerChatMessage[]) {
+  caseChatMessagesByCase.set(caseId, messages);
+  persistCaseState();
+}
+
+function appendChatMessage(message: OfficerChatMessage) {
+  const history = getChatHistory(message.caseId);
+  const next = [...history, message].slice(-200);
+  setChatHistory(message.caseId, next);
+  return next;
+}
+
+function normalizeChatMessage(payload: Record<string, unknown>, caseId: string): OfficerChatMessage | null {
+  const message = String(payload.message || payload.text || "").trim();
+  if (!message) return null;
+
+  const createdAt = String(payload.createdAt || new Date().toISOString());
+  const directionRaw = String(payload.direction || "officer-to-victim");
+  const direction: OfficerChatMessage["direction"] =
+    directionRaw === "victim-to-officer" || directionRaw === "system" ? directionRaw : "officer-to-victim";
+
+  return {
+    messageId: String(payload.messageId || `chat-${randomUUID()}`),
+    caseId,
+    officerId: String(payload.officerId || "officer-user").trim() || "officer-user",
+    officerPost: String(payload.officerPost || payload.role || "Police Officer").trim() || "Police Officer",
+    officerName: String(payload.officerName || payload.displayName || payload.officerId || "Officer").trim() || "Officer",
+    role: String(payload.role || "officer").trim() || "officer",
+    message,
+    createdAt,
+    direction,
+  };
 }
 
 async function fetchJsonWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000) {
@@ -785,6 +908,350 @@ function buildEvidenceLeads(fragments: string[], queryHint?: string) {
   return leads;
 }
 
+function extractJsonObjectFromText(text: string) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    // Continue to fenced/object-slice extraction below.
+  }
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]) as Record<string, unknown>;
+    } catch {
+      // Continue to brace slicing.
+    }
+  }
+
+  const firstBrace = raw.indexOf("{");
+  const lastBrace = raw.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const sliced = raw.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(sliced) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function tokenizeSearchText(text: string) {
+  return uniqueStrings(
+    String(text || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((token) => token.length >= 3)
+  );
+}
+
+function rankEvidenceLeads(
+  leads: Array<{ type: string; query: string; source: string; confidence: number; rationale: string }>,
+  query: string,
+  caseText: string
+) {
+  const queryTokens = tokenizeSearchText(query);
+  const caseTokens = new Set(tokenizeSearchText(caseText));
+
+  return leads
+    .map((lead) => {
+      const leadTokens = tokenizeSearchText(`${lead.type} ${lead.query} ${lead.rationale}`);
+      const queryOverlap = leadTokens.filter((token) => queryTokens.includes(token)).length;
+      const caseOverlap = leadTokens.filter((token) => caseTokens.has(token)).length;
+      const score = Math.min(
+        0.99,
+        Math.max(0.15, lead.confidence * 0.6 + queryOverlap * 0.08 + caseOverlap * 0.04)
+      );
+
+      return {
+        ...lead,
+        score: Number(score.toFixed(2)),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function buildEvidenceSearchText(params: {
+  provider: string;
+  summary: string;
+  topLeads: Array<{ type: string; query: string; source: string; score: number }>;
+  suggestedSearches: string[];
+  weatherSummary?: string;
+  cameraSummary?: string;
+  autoActions?: string[];
+  caseId?: string;
+}) {
+  const leadLines = params.topLeads.length
+    ? params.topLeads
+        .slice(0, 4)
+        .map(
+          (lead, index) =>
+            `${index + 1}. [${lead.type}] ${lead.query} | Source: ${lead.source} | Score: ${Math.round(
+              lead.score * 100
+            )}%`
+        )
+    : ["1. [generic] Preserve timeline artifacts (photos, receipts, messages, location pings)."];
+
+  const searchLines = params.suggestedSearches.length
+    ? params.suggestedSearches.slice(0, 4).map((query, index) => `${index + 1}. ${query}`)
+    : ["1. historical weather <city> <date>", "2. nearby cctv preservation request <location>"];
+
+  return [
+    params.caseId ? `Case: ${params.caseId}` : "",
+    `Summary: ${params.summary}`,
+    params.weatherSummary ? `Weather intelligence: ${params.weatherSummary}` : "",
+    params.cameraSummary ? `Camera intelligence: ${params.cameraSummary}` : "",
+    "",
+    "Top evidence leads:",
+    ...leadLines,
+    "",
+    "Suggested search strings:",
+    ...searchLines,
+    params.autoActions?.length ? "" : "",
+    params.autoActions?.length ? "Automatic next actions:" : "",
+    ...(params.autoActions || []).slice(0, 5).map((item, index) => `${index + 1}. ${item}`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function inferLocationFromText(text: string) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+
+  const lower = normalized.toLowerCase();
+  const markers = [" in ", " at ", " near ", " around ", " from "];
+  const stoppers = [" and ", " but ", " where ", " when ", " with ", " it ", ".", ",", "|"];
+
+  for (const marker of markers) {
+    const start = lower.indexOf(marker);
+    if (start < 0) continue;
+
+    const tail = normalized.slice(start + marker.length).trim();
+    if (!tail) continue;
+
+    let endIndex = tail.length;
+    const lowerTail = tail.toLowerCase();
+    for (const stop of stoppers) {
+      const idx = lowerTail.indexOf(stop);
+      if (idx >= 0 && idx < endIndex) {
+        endIndex = idx;
+      }
+    }
+
+    const candidate = tail.slice(0, endIndex).trim();
+    if (candidate.length >= 3) {
+      return candidate.split(" ").slice(0, 5).join(" ");
+    }
+  }
+
+  const tokens = normalized
+    .replace(/[^a-zA-Z\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const stop = new Set(["i", "me", "my", "the", "a", "an", "and", "but", "it", "was", "were", "is", "are"]);
+  const fallback = tokens.find((token) => token.length >= 4 && !stop.has(token.toLowerCase()));
+  return fallback || null;
+}
+
+function buildLocationCandidates(locationLabel: string) {
+  const seed = String(locationLabel || "").trim();
+  if (!seed) return [];
+
+  const normalized = seed.replace(/\s+/g, " ").trim();
+  const candidates = [normalized];
+
+  const splitter = /\b(?:near|around|at|in)\b/i;
+  if (splitter.test(normalized)) {
+    const parts = normalized.split(splitter).map((part) => part.trim()).filter(Boolean);
+    candidates.push(...parts);
+  }
+
+  const commaParts = normalized.split(",").map((part) => part.trim()).filter(Boolean);
+  candidates.push(...commaParts);
+
+  const wordTokens = normalized
+    .replace(/[^a-zA-Z\s]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const stop = new Set(["i", "me", "my", "the", "a", "an", "and", "but", "near", "around", "at", "in"]);
+  for (const token of wordTokens) {
+    const lower = token.toLowerCase();
+    if (token.length >= 4 && !stop.has(lower)) {
+      candidates.push(token);
+    }
+  }
+
+  return uniqueStrings(candidates).slice(0, 5);
+}
+
+function parseDateWindowFromText(text: string) {
+  const normalized = String(text || "").toLowerCase();
+  if (!normalized) return null;
+
+  const monthMap: Record<string, number> = {
+    january: 0,
+    february: 1,
+    march: 2,
+    april: 3,
+    may: 4,
+    june: 5,
+    july: 6,
+    august: 7,
+    september: 8,
+    october: 9,
+    november: 10,
+    december: 11,
+  };
+
+  const monthRegex = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/g;
+  const months: number[] = [];
+  let monthMatch: RegExpExecArray | null;
+  while ((monthMatch = monthRegex.exec(normalized)) !== null) {
+    const idx = monthMap[monthMatch[1]];
+    if (Number.isInteger(idx)) {
+      months.push(idx);
+    }
+  }
+
+  if (!months.length) return null;
+
+  const yearMatch = normalized.match(/\b(20\d{2})\b/);
+  const now = new Date();
+  const year = yearMatch ? Number(yearMatch[1]) : now.getFullYear();
+  const firstMonth = months[0];
+  const lastMonth = months[months.length - 1];
+
+  const start = new Date(Date.UTC(year, firstMonth, 1));
+  const end = new Date(Date.UTC(year, lastMonth + 1, 0));
+
+  const formatDate = (value: Date) => {
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(value.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  return {
+    startDate: formatDate(start),
+    endDate: formatDate(end),
+  };
+}
+
+async function fetchHistoricalWeatherSummary(params: { locationLabel: string; startDate: string; endDate: string }) {
+  const locationCandidates = buildLocationCandidates(params.locationLabel);
+  let center: Awaited<ReturnType<typeof geocodeLocationLabel>> = null;
+  for (const candidate of locationCandidates) {
+    center = await geocodeLocationLabel(candidate);
+    if (center) break;
+  }
+
+  if (!center) {
+    return {
+      ok: false as const,
+      summary: "Could not geocode location for weather check.",
+    };
+  }
+
+  const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${encodeURIComponent(String(center.lat))}&longitude=${encodeURIComponent(String(center.lon))}&start_date=${encodeURIComponent(params.startDate)}&end_date=${encodeURIComponent(params.endDate)}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,rain_sum&timezone=auto`;
+  const response = await fetchJsonWithTimeout(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Saakshi/1.0 (+https://example.local)",
+    },
+  }, 18000);
+
+  if (!response.ok || typeof response.data !== "object" || !response.data) {
+    return {
+      ok: false as const,
+      summary: "Weather provider unavailable for this window.",
+    };
+  }
+
+  const daily = (response.data as any).daily || {};
+  const rain = Array.isArray(daily.rain_sum) ? daily.rain_sum.map((v: unknown) => Number(v || 0)) : [];
+  const precipitation = Array.isArray(daily.precipitation_sum)
+    ? daily.precipitation_sum.map((v: unknown) => Number(v || 0))
+    : [];
+  const maxTemp = Array.isArray(daily.temperature_2m_max)
+    ? daily.temperature_2m_max.map((v: unknown) => Number(v || 0))
+    : [];
+  const minTemp = Array.isArray(daily.temperature_2m_min)
+    ? daily.temperature_2m_min.map((v: unknown) => Number(v || 0))
+    : [];
+
+  const days = Math.max(rain.length, precipitation.length, maxTemp.length, minTemp.length);
+  if (!days) {
+    return {
+      ok: false as const,
+      summary: "No daily weather rows returned for selected range.",
+    };
+  }
+
+  let rainyDays = 0;
+  let totalRainMm = 0;
+  let tempAccumulator = 0;
+  let tempCount = 0;
+
+  for (let i = 0; i < days; i += 1) {
+    const rainValue = Number(rain[i] || 0);
+    const precipValue = Number(precipitation[i] || 0);
+    const maxV = Number(maxTemp[i]);
+    const minV = Number(minTemp[i]);
+
+    if (rainValue > 0 || precipValue > 0) {
+      rainyDays += 1;
+    }
+    totalRainMm += rainValue > 0 ? rainValue : precipValue;
+
+    if (Number.isFinite(maxV) && Number.isFinite(minV)) {
+      tempAccumulator += (maxV + minV) / 2;
+      tempCount += 1;
+    }
+  }
+
+  const avgTemp = tempCount ? Number((tempAccumulator / tempCount).toFixed(1)) : null;
+  const summary = `${center.displayName}: ${rainyDays}/${days} rainy day(s), total precipitation ~${totalRainMm.toFixed(1)} mm${avgTemp !== null ? `, avg temp ~${avgTemp} C` : ""} between ${params.startDate} and ${params.endDate}.`;
+
+  return {
+    ok: true as const,
+    summary,
+    location: center.displayName,
+    rainyDays,
+    days,
+    totalRainMm: Number(totalRainMm.toFixed(1)),
+    avgTemp,
+  };
+}
+
+async function resolveFirstGeocodableLocation(texts: string[]) {
+  for (const text of texts) {
+    const inferred = inferLocationFromText(text);
+    if (!inferred) continue;
+
+    const candidates = buildLocationCandidates(inferred);
+    for (const candidate of candidates) {
+      const center = await geocodeLocationLabel(candidate);
+      if (center) {
+        return {
+          label: candidate,
+          center,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 async function buildCaseInsightBundle(params: {
   caseId: string;
   profile?: VictimProfile;
@@ -1072,6 +1539,7 @@ async function renderCaseReportPdfBuffer(
 
 async function startServer() {
   const app = express();
+  const httpServer = createHttpServer(app);
   const PORT = 3000;
   const googleNlpClient = process.env.GOOGLE_APPLICATION_CREDENTIALS
     ? new LanguageServiceClient()
@@ -1095,6 +1563,99 @@ async function startServer() {
   app.disable("x-powered-by");
 
   app.use(express.json({ limit: "12mb" }));
+
+  const chatServer = new WebSocketServer({ server: httpServer, path: "/ws/officer-chat" });
+
+  const broadcastToCase = (caseId: string, payload: Record<string, unknown>) => {
+    const clients = caseChatClientsByCase.get(caseId);
+    if (!clients || !clients.size) return;
+
+    const serialized = JSON.stringify(payload);
+    for (const client of clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(serialized);
+      }
+    }
+  };
+
+  chatServer.on("connection", (socket, request) => {
+    const requestUrl = new URL(request.url || "/", "http://localhost");
+    const caseId = String(requestUrl.searchParams.get("caseId") || "").trim();
+    const role = String(requestUrl.searchParams.get("role") || "victim").trim() || "victim";
+    const officerId = String(requestUrl.searchParams.get("officerId") || "").trim();
+    const officerName = String(requestUrl.searchParams.get("officerName") || requestUrl.searchParams.get("displayName") || "").trim();
+    const officerPost = String(requestUrl.searchParams.get("post") || requestUrl.searchParams.get("officerPost") || role).trim() || role;
+
+    if (!caseId) {
+      socket.send(JSON.stringify({ type: "error", error: "caseId is required" }));
+      socket.close(1008, "caseId is required");
+      return;
+    }
+
+    if (!caseChatClientsByCase.has(caseId)) {
+      caseChatClientsByCase.set(caseId, new Set());
+    }
+    caseChatClientsByCase.get(caseId)?.add(socket);
+
+    socket.send(
+      JSON.stringify({
+        type: "history",
+        caseId,
+        messages: getChatHistory(caseId),
+        role,
+      })
+    );
+
+    socket.on("message", (raw) => {
+      try {
+        const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw || "");
+        const parsed = JSON.parse(text || "{}") as Record<string, unknown>;
+        const incomingCaseId = String(parsed.caseId || caseId).trim();
+        if (!incomingCaseId || incomingCaseId !== caseId) {
+          socket.send(JSON.stringify({ type: "error", error: "caseId mismatch" }));
+          return;
+        }
+
+        if (String(parsed.type || "message") !== "message") {
+          return;
+        }
+
+        const normalized = normalizeChatMessage(
+          {
+            ...parsed,
+            officerId: officerId || String(parsed.officerId || "officer-user"),
+            officerName: officerName || String(parsed.officerName || parsed.displayName || officerId || "Officer"),
+            officerPost: officerPost || String(parsed.officerPost || role),
+            role,
+          },
+          caseId
+        );
+
+        if (!normalized) {
+          socket.send(JSON.stringify({ type: "error", error: "message is required" }));
+          return;
+        }
+
+        const nextHistory = appendChatMessage(normalized);
+        broadcastToCase(caseId, {
+          type: "message",
+          caseId,
+          message: normalized,
+          messages: nextHistory,
+        });
+      } catch (error) {
+        socket.send(JSON.stringify({ type: "error", error: (error as Error).message || "Invalid chat payload" }));
+      }
+    });
+
+    socket.on("close", () => {
+      const clients = caseChatClientsByCase.get(caseId);
+      clients?.delete(socket);
+      if (clients && clients.size === 0) {
+        caseChatClientsByCase.delete(caseId);
+      }
+    });
+  });
 
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -1333,11 +1894,27 @@ async function startServer() {
     const ctx = res.locals.auditContext;
     const caseId = String(req.body?.caseId || "").trim();
     const grantedByActorId = String(req.body?.grantedByActorId || ctx.actorId);
-    const granteeRole = String(req.body?.granteeRole || "anonymous") as any;
+    const rawGranteeRole = String(req.body?.granteeRole || "anonymous").trim().toLowerCase();
+    const granteeRole =
+      rawGranteeRole === "lawyer"
+        ? "lawyer"
+        : rawGranteeRole === "admin"
+        ? "admin"
+        : rawGranteeRole === "police" || rawGranteeRole === "officer"
+        ? "police"
+        : "anonymous";
     const purpose = String(req.body?.purpose || "analysis") as any;
     const requestedFields = Array.isArray(req.body?.requestedFields) ? req.body.requestedFields : [];
+    let granteeActorId = String(req.body?.granteeActorId || "").trim();
 
     if (!caseId) return res.status(400).json({ error: "caseId is required" });
+
+    if (granteeRole !== "anonymous") {
+      if (!granteeActorId) {
+        return res.status(400).json({ error: "granteeActorId is required for officer/lawyer/admin grants" });
+      }
+      granteeActorId = toScopedOfficerActorId(granteeActorId, granteeRole);
+    }
 
     const evalResult = evaluateConsent({
       actorId: grantedByActorId,
@@ -1358,7 +1935,7 @@ async function startServer() {
       grantId,
       caseId,
       grantedByActorId,
-      granteeActorId: req.body?.granteeActorId,
+      granteeActorId: granteeActorId || undefined,
       granteeRole,
       purpose,
       requestedFields,
@@ -1518,10 +2095,193 @@ async function startServer() {
       const query = String(req.body?.query || "").trim();
       if (!query) return res.status(400).json({ error: "query is required" });
 
-      const response = await ai!.models.generateContent({
-        model: getGeminiModel(),
-        contents: `Search for digital evidence or public records related to: "${query}". Focus on weather data, transit records, or local events that could verify this timeline.`,
-        config: { tools: [{ googleSearch: {} }] },
+      const caseIdFromBody = String(req.body?.caseId || "").trim();
+      const caseIdFromHeader = String(req.header("x-case-id") || "").trim();
+      const caseId = caseIdFromBody || caseIdFromHeader || undefined;
+
+      const context = caseId ? buildCaseContextDigest(caseId) : null;
+      const incidentSummary = String(context?.profile?.incidentSummary || "").trim();
+      const caseText = [incidentSummary, ...(context?.recentFragments || [])].join(" ").slice(0, 10000);
+      const heuristicLeads = rankEvidenceLeads(buildEvidenceLeads(context?.recentFragments || [], query), query, caseText);
+      const vertexApiKey = getVertexApiKey();
+      const resolvedLocation = await resolveFirstGeocodableLocation([
+        query,
+        incidentSummary,
+        ...(context?.recentFragments || []).slice(-8),
+      ]);
+      const inferredLocation = resolvedLocation?.label || inferLocationFromText(`${query} ${incidentSummary} ${(context?.recentFragments || []).join(" ")}`);
+      const coarseLocation = String(inferredLocation || "")
+        .split(/\bnear\b/i)[0]
+        .trim();
+      const inferredDateWindow = parseDateWindowFromText(`${query} ${incidentSummary} ${(context?.recentFragments || []).join(" ")}`);
+      const weatherDataFromClient = req.body?.weatherData;
+
+      const [weatherIntelligence, cameraIntelligence] = await Promise.all([
+        inferredLocation && inferredDateWindow
+          ? fetchHistoricalWeatherSummary({
+              locationLabel: resolvedLocation?.center?.displayName || coarseLocation || inferredLocation,
+              startDate: inferredDateWindow.startDate,
+              endDate: inferredDateWindow.endDate,
+            })
+          : Promise.resolve(null),
+        inferredLocation
+          ? lookupNearbyCameras(resolvedLocation?.center?.displayName || coarseLocation || inferredLocation, 1200)
+          : Promise.resolve(null),
+      ]);
+
+      const aiPrompt = [
+        "You are an evidence-intelligence assistant for a legal case support tool.",
+        "Given the user query and case context, produce practical, lawful evidence-retrieval guidance.",
+        "Do not claim direct access to protected systems.",
+        "Return strict JSON with keys: summary (string), suggestedSearches (string[]), and confidence (number 0..1).",
+        `User query: ${query}`,
+        caseId ? `Case id: ${caseId}` : "",
+        incidentSummary ? `Incident summary: ${incidentSummary}` : "Incident summary: unavailable",
+        `Recent fragments: ${(context?.recentFragments || []).slice(-8).join(" | ") || "none"}`,
+        `Heuristic leads: ${heuristicLeads
+          .slice(0, 5)
+          .map((lead) => `${lead.type}:${lead.query} (${lead.score})`)
+          .join(" | ")}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      let provider = "heuristic-local";
+      let modelSummary = "Evidence guidance generated from case clues and deterministic ranking.";
+      let suggestedSearches: string[] = heuristicLeads.slice(0, 4).map((lead) => lead.query);
+      const autoActions: string[] = [];
+
+      if (weatherIntelligence?.ok) {
+        autoActions.push(
+          "Weather corroboration fetched from Open-Meteo archive. Add this to timeline verification."
+        );
+      } else if (weatherDataFromClient && typeof weatherDataFromClient === "object") {
+        autoActions.push("Weather corroboration accepted from provided input payload.");
+      }
+      if (cameraIntelligence?.cameras?.length) {
+        autoActions.push(
+          `Nearby camera markers discovered (${cameraIntelligence.cameras.length}). Prioritize preservation notices for closest sites.`
+        );
+      }
+      if (!autoActions.length) {
+        autoActions.push("No external data source auto-resolved yet. Refine location/date cues for stronger enrichment.");
+      }
+
+      const tryVertexEvidenceSearch = async () => {
+        if (!vertexApiKey) return false;
+        const models = uniqueStrings([getVertexModel(), "gemini-2.5-flash-lite", "gemini-2.5-flash"]);
+
+        for (const model of models) {
+          try {
+            const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(vertexApiKey)}`;
+            const response = await fetchJsonWithTimeout(
+              url,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ text: aiPrompt }],
+                    },
+                  ],
+                  generationConfig: {
+                    temperature: 0.1,
+                    topP: 0.2,
+                    maxOutputTokens: 1024,
+                    responseMimeType: "application/json",
+                  },
+                }),
+              },
+              22000
+            );
+
+            if (!response.ok) {
+              continue;
+            }
+
+            const raw = extractTextFromModelResponsePayload(response.data);
+            const parsed = extractJsonObjectFromText(raw);
+            const nextSummary = String(parsed?.summary || "").trim();
+            const nextSearches = Array.isArray(parsed?.suggestedSearches)
+              ? (parsed?.suggestedSearches as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
+              : [];
+
+            if (nextSummary) {
+              provider = `vertex-evidence(${model})`;
+              modelSummary = nextSummary;
+              suggestedSearches = nextSearches.length ? nextSearches : suggestedSearches;
+              return true;
+            }
+          } catch {
+            // Try next model.
+          }
+        }
+
+        return false;
+      };
+
+      const tryGeminiEvidenceSearch = async () => {
+        if (!ai) return false;
+        try {
+          const response = await ai.models.generateContent({
+            model: getGeminiModel(),
+            contents: aiPrompt,
+            config: {
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  summary: { type: Type.STRING },
+                  suggestedSearches: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  confidence: { type: Type.NUMBER },
+                },
+              },
+            },
+          });
+
+          const parsed = extractJsonObjectFromText(response.text || "");
+          const nextSummary = String(parsed?.summary || "").trim();
+          const nextSearches = Array.isArray(parsed?.suggestedSearches)
+            ? (parsed?.suggestedSearches as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
+            : [];
+
+          if (nextSummary) {
+            provider = `gemini-evidence(${getGeminiModel()})`;
+            modelSummary = nextSummary;
+            suggestedSearches = nextSearches.length ? nextSearches : suggestedSearches;
+            return true;
+          }
+        } catch {
+          return false;
+        }
+
+        return false;
+      };
+
+      const usedVertex = await tryVertexEvidenceSearch();
+      if (!usedVertex) {
+        await tryGeminiEvidenceSearch();
+      }
+
+      const responseText = buildEvidenceSearchText({
+        provider,
+        summary: modelSummary,
+        topLeads: heuristicLeads,
+        suggestedSearches,
+        weatherSummary:
+          weatherIntelligence?.summary ||
+          (weatherDataFromClient && typeof weatherDataFromClient === "object"
+            ? `Provided weather data: ${JSON.stringify(weatherDataFromClient)}`
+            : undefined),
+        cameraSummary: cameraIntelligence
+          ? `${cameraIntelligence.cameras.length} camera marker(s) near ${cameraIntelligence.center?.displayName || inferredLocation || "location"}.`
+          : undefined,
+        autoActions,
+        caseId,
       });
 
       const ctx = res.locals.auditContext;
@@ -1533,10 +2293,22 @@ async function startServer() {
           role: ctx.role,
           resource: req.path,
           success: true,
+          details: {
+            caseId: caseId || "unknown",
+            provider,
+            leadCount: heuristicLeads.length,
+            weatherResolved: !!weatherIntelligence?.ok,
+            cameraCount: cameraIntelligence?.cameras?.length || 0,
+          },
         })
       );
 
-      res.json({ text: response.text });
+      res.json({
+        text: responseText,
+        provider,
+        caseId: caseId || null,
+        leadCount: heuristicLeads.length,
+      });
     } catch (error) {
       console.error("search-evidence failed", error);
       res.status(500).json({ error: "Evidence search failed" });
@@ -2464,11 +3236,12 @@ ${query}`,
     }
   });
 
-  app.post("/api/report/export", requireConsentForPurpose("analysis"), async (req, res) => {
+  app.post("/api/report/export", requireConsentForPurpose("legal_export"), async (req, res) => {
     try {
       const caseId = String(req.body?.caseId || "").trim();
       const audience = String(req.body?.audience || "victim").trim();
       const officerId = String(req.body?.officerId || "").trim();
+      const officerRole = normalizeOfficerRoleToken(String(req.body?.officerRole || "police"));
       const victimUniqueId = String(req.body?.victimUniqueId || "").trim();
 
       if (!caseId) {
@@ -2487,15 +3260,26 @@ ${query}`,
       }
 
       if (audience === "officer") {
-        const isDesignated = officerDesignations.some(
-          (designation) =>
-            designation.caseId === caseId &&
-            designation.officerId === officerId &&
-            designation.status === "active" &&
-            (!designation.expiresAt || new Date(designation.expiresAt) > new Date())
+        const isDesignated = officerDesignations.some((designation) =>
+          isDesignationActiveForOfficer({
+            caseId,
+            officerIdRaw: officerId,
+            officerRole,
+            designation,
+          })
         );
         if (!isDesignated) {
           return res.status(403).json({ error: "Officer is not designated for this case" });
+        }
+
+        const hasExportGrant = hasActorGrant({
+          caseId,
+          officerIdRaw: officerId,
+          officerRole,
+          purpose: "legal_export",
+        });
+        if (!hasExportGrant) {
+          return res.status(403).json({ error: "No active legal_export consent grant for this officer" });
         }
       }
 
@@ -3082,7 +3866,8 @@ ${query}`,
       const adminId = adminSession.email;
       const caseId = String(req.body?.caseId || "").trim();
       const officerId = String(req.body?.officerId || "").trim();
-      const role = String(req.body?.role || "police");
+      const role = normalizeOfficerRoleToken(String(req.body?.role || "police"));
+      const scopedOfficerActorId = toScopedOfficerActorId(officerId, role);
       const expiresAt = req.body?.expiresAt; // Optional expiration
 
       if (!caseId || !officerId) {
@@ -3101,7 +3886,8 @@ ${query}`,
       const existing = officerDesignations.find(
         (d) =>
           d.caseId === caseId &&
-          d.officerId === officerId &&
+          (d.officerId === officerId || d.officerId === scopedOfficerActorId) &&
+          d.role === role &&
           d.status === "active"
       );
       if (existing) {
@@ -3113,7 +3899,7 @@ ${query}`,
       // Create designation
       const designation = createOfficerDesignation({
         caseId,
-        officerId,
+        officerId: scopedOfficerActorId,
         role: role as any,
         designatedByActorId: adminId,
         expiresAt,
@@ -3132,7 +3918,7 @@ ${query}`,
           success: true,
           details: {
             designationId: designation.designationId,
-            officerId,
+            officerId: scopedOfficerActorId,
             caseId,
             role,
           },
@@ -3265,6 +4051,9 @@ ${query}`,
   app.post("/api/officer/list-assigned-cases", (req, res) => {
     try {
       const officerId = String(req.body?.officerId || "").trim();
+      const officerRoleRaw = String(req.body?.role || "").trim();
+      const officerRole = officerRoleRaw ? normalizeOfficerRoleToken(officerRoleRaw) : null;
+      const scopedOfficerActorId = officerRole ? toScopedOfficerActorId(officerId, officerRole) : null;
       if (!officerId) {
         return res.status(400).json({ error: "officerId is required" });
       }
@@ -3274,7 +4063,8 @@ ${query}`,
       // Get all designations for this officer where status is active
       const activeDesignations = officerDesignations.filter(
         (d) =>
-          d.officerId === officerId &&
+          (d.officerId === officerId || (!!scopedOfficerActorId && d.officerId === scopedOfficerActorId)) &&
+          (!officerRole || d.role === officerRole) &&
           d.status === "active" &&
           (!d.expiresAt || new Date(d.expiresAt) > new Date())
       );
@@ -3303,6 +4093,7 @@ ${query}`,
 
       res.json({
         officerId,
+        officerRole: officerRole || undefined,
         assignedCaseCount: assignedCases.length,
         assignedCases,
         message: `You have access to ${assignedCases.length} case(s).`,
@@ -3322,8 +4113,9 @@ ${query}`,
     try {
       const officerId = String(req.body?.officerId || "").trim();
       const caseId = String(req.body?.caseId || "").trim();
-      const role = String(req.body?.role || "police");
-      const purpose = String(req.body?.purpose || "police_share");
+      const role = normalizeOfficerRoleToken(String(req.body?.role || "police"));
+      const purpose = String(req.body?.purpose || (role === "lawyer" ? "lawyer_share" : "police_share"));
+      const scopedOfficerActorId = toScopedOfficerActorId(officerId, role);
       const requestedFields = Array.isArray(req.body?.requestedFields)
         ? req.body.requestedFields
         : [];
@@ -3337,13 +4129,23 @@ ${query}`,
       const ctx = res.locals.auditContext;
 
       // Build access check result (levels 1-2)
-      const accessResult = buildAccessCheckResult({
+      let accessResult = buildAccessCheckResult({
         caseId,
-        officerId,
+        officerId: scopedOfficerActorId,
         role: role as any,
         purpose,
         designations: officerDesignations,
       });
+
+      if (!accessResult.approved) {
+        accessResult = buildAccessCheckResult({
+          caseId,
+          officerId,
+          role: role as any,
+          purpose,
+          designations: officerDesignations,
+        });
+      }
 
       if (!accessResult.approved) {
         logAuditEvent(
@@ -3371,22 +4173,19 @@ ${query}`,
 
       // Levels 3-4: Policy + Grant check
       const policyResult = evaluateConsent({
-        actorId: officerId,
+        actorId: scopedOfficerActorId,
         actorRole: role as any,
         caseId,
         purpose: purpose as any,
         requestedFields,
       });
 
-      const caseGrantResult = listGrantsByCase(caseId);
-        const caseGrants: any[] = Array.isArray(caseGrantResult) ? caseGrantResult : (caseGrantResult as any)?.grants || [];
-      const hasActiveGrant = caseGrants?.some(
-        (g) =>
-          g.status === "active" &&
-          g.granteeRole === role &&
-          g.purpose === purpose &&
-          (!g.expiresAt || new Date(g.expiresAt) > new Date())
-      ) || policyResult.allowed;
+      const hasActiveGrant = hasActorGrant({
+        caseId,
+        officerIdRaw: officerId,
+        officerRole: role,
+        purpose: (purpose === "lawyer_share" ? "lawyer_share" : "police_share") as "police_share" | "lawyer_share",
+      });
 
       if (!hasActiveGrant) {
         logAuditEvent(
@@ -3445,6 +4244,7 @@ ${query}`,
     try {
       const caseId = String(req.params.caseId || "").trim();
       const officerId = String(req.query.officerId || "").trim();
+      const officerRole = normalizeOfficerRoleToken(String(req.query.officerRole || ""));
 
       if (!caseId || !officerId) {
         return res
@@ -3453,18 +4253,24 @@ ${query}`,
       }
 
       // Check if officer is designated
-      const isDesignated = officerDesignations.some(
-        (d) =>
-          d.caseId === caseId &&
-          d.officerId === officerId &&
-          d.status === "active" &&
-          (!d.expiresAt || new Date(d.expiresAt) > new Date())
+      const isDesignated = officerDesignations.some((designation) =>
+        isDesignationActiveForOfficer({
+          caseId,
+          officerIdRaw: officerId,
+          officerRole,
+          designation,
+        })
       );
 
       if (!isDesignated) {
         return res.status(403).json({
           error: `Officer ${officerId} is not designated for case ${caseId}`,
         });
+      }
+
+      const sharePurpose = officerRole === "lawyer" ? "lawyer_share" : "police_share";
+      if (!hasActorGrant({ caseId, officerIdRaw: officerId, officerRole, purpose: sharePurpose })) {
+        return res.status(403).json({ error: "No active consent grant for this officer role" });
       }
 
       const caseAssignment = caseAssignments.get(caseId);
@@ -3512,7 +4318,7 @@ ${query}`,
           requestId: ctx.requestId,
           action: "case.details-fetched",
           actorId: officerId,
-          role: "police",
+          role: officerRole,
           resource: req.path,
           success: true,
           details: { caseId },
@@ -3553,23 +4359,30 @@ ${query}`,
     try {
       const caseId = String(req.params.caseId || "").trim();
       const officerId = String(req.query.officerId || "").trim();
+      const officerRole = normalizeOfficerRoleToken(String(req.query.officerRole || ""));
 
       if (!caseId || !officerId) {
         return res.status(400).json({ error: "caseId and officerId query param required" });
       }
 
-      const isDesignated = officerDesignations.some(
-        (d) =>
-          d.caseId === caseId &&
-          d.officerId === officerId &&
-          d.status === "active" &&
-          (!d.expiresAt || new Date(d.expiresAt) > new Date())
+      const isDesignated = officerDesignations.some((designation) =>
+        isDesignationActiveForOfficer({
+          caseId,
+          officerIdRaw: officerId,
+          officerRole,
+          designation,
+        })
       );
 
       if (!isDesignated) {
         return res.status(403).json({
           error: `Officer ${officerId} is not designated for case ${caseId}`,
         });
+      }
+
+      const sharePurpose = officerRole === "lawyer" ? "lawyer_share" : "police_share";
+      if (!hasActorGrant({ caseId, officerIdRaw: officerId, officerRole, purpose: sharePurpose })) {
+        return res.status(403).json({ error: "No active consent grant for this officer role" });
       }
 
       const caseAssignment = caseAssignments.get(caseId);
@@ -3733,7 +4546,7 @@ ${query}`,
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
