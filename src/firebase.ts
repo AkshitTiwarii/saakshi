@@ -3,9 +3,20 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+const viteEnv = (import.meta as any).env || {};
+const firebaseApiKey = String(viteEnv.VITE_FIREBASE_API_KEY || firebaseConfig.apiKey || '').trim();
+const runtimeFirebaseConfig = {
+  ...firebaseConfig,
+  apiKey: firebaseApiKey,
+};
+
+if (!runtimeFirebaseConfig.apiKey) {
+  throw new Error('Missing VITE_FIREBASE_API_KEY for Firebase initialization.');
+}
+
+const app = initializeApp(runtimeFirebaseConfig);
 const firestoreDatabaseId =
-  typeof firebaseConfig.firestoreDatabaseId === 'string' ? firebaseConfig.firestoreDatabaseId : '(default)';
+  typeof runtimeFirebaseConfig.firestoreDatabaseId === 'string' ? runtimeFirebaseConfig.firestoreDatabaseId : '(default)';
 export const db =
   firestoreDatabaseId && firestoreDatabaseId !== '(default)'
     ? getFirestore(app, firestoreDatabaseId)

@@ -14,11 +14,12 @@ interface BottomNavProps {
 
 const items: Array<{ key: RouteName; label: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
   { key: "Dashboard", label: "Home", icon: "home-variant-outline" },
-  { key: "Chat", label: "Chat", icon: "chat-processing-outline" },
+  
   { key: "WebWorkspace", label: "Command", icon: "console-line" },
   { key: "CaptureMethod", label: "Capture", icon: "database-plus-outline" },
   { key: "Virodhi", label: "Virodhi", icon: "gavel" },
   { key: "Raksha", label: "Raksha", icon: "shield-star-outline" },
+  { key: "Chat", label: "Chat", icon: "chat-processing-outline" },
   { key: "Settings", label: "Settings", icon: "cog-outline" },
 ];
 
