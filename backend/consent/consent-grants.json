@@ -1,0 +1,41 @@
+[
+  {
+    "grantId": "grant-seed-police-share-001",
+    "caseId": "SAAK-2026-1042",
+    "grantedByActorId": "victim-test-uid-001",
+    "granteeActorId": "OFF-IND-221",
+    "granteeRole": "police",
+    "purpose": "police_share",
+    "requestedFields": ["full_case_timeline", "victim_media", "ai_analysis"],
+    "redactions": ["therapy_notes", "private_journal"],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-03-26T00:00:00.000Z"
+  },
+  {
+    "grantId": "grant-seed-lawyer-share-001",
+    "caseId": "SAAK-2026-1042",
+    "grantedByActorId": "victim-test-uid-001",
+    "granteeActorId": "ADV-LEGAL-72",
+    "granteeRole": "lawyer",
+    "purpose": "lawyer_share",
+    "requestedFields": ["full_case_timeline", "victim_media", "ai_analysis"],
+    "redactions": [],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-03-26T00:00:00.000Z"
+  },
+  {
+    "grantId": "grant-seed-police-analysis-001",
+    "caseId": "SAAK-2026-1042",
+    "grantedByActorId": "victim-test-uid-001",
+    "granteeActorId": "OFF-IND-331",
+    "granteeRole": "police",
+    "purpose": "analysis",
+    "requestedFields": ["full_case_timeline", "victim_media", "ai_analysis"],
+    "redactions": ["therapy_notes", "private_journal"],
+    "policyVersion": "0.1.0-stub",
+    "status": "active",
+    "createdAt": "2026-03-26T00:00:00.000Z"
+  }
+]
