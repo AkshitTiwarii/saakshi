@@ -34,8 +34,14 @@ const officerDesignations: OfficerDesignation[] = []; // Array of designations
 const victimCaseMap = new Map<string, string>(); // victimUniqueId -> caseId (for lookup)
 const adminSessions = new Map<string, { email: string; createdAt: string }>();
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "akshittiwari29@gmail.com";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "@Akshittiwari2910";
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error(
+    "Missing required environment variables: ADMIN_EMAIL and ADMIN_PASSWORD must be set. Do not commit credentials to git."
+  );
+}
 
 type VictimProfile = {
   victimUniqueId: string;
