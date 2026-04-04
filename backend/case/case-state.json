@@ -96,14 +96,21 @@
           "victimUniqueId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
           "email": "tiwariakshit60@gmail.com",
           "displayName": "Akshit Tiwari",
-          "updatedAt": "2026-03-28T20:25:11.967Z"
+          "phone": "9999999999",
+          "emergencyContact": "100",
+          "incidentSummary": "I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
+          "updatedAt": "2026-04-04T11:20:12.334Z"
         },
-        "fragments": [],
+        "fragments": [
+          "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
+          "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days.",
+          "[dashboard-case-brief] I am a 22-year-old college student was assaulted while returning home at night. Due to fear and social pressure, the incident was reported after several days."
+        ],
         "metadata": {
           "authProvider": "google",
           "onboardingCompleted": false,
-          "lastUpdatedAt": "2026-03-28T20:25:11.967Z",
-          "source": "mobile-settings-export-sync"
+          "lastUpdatedAt": "2026-04-04T11:20:12.334Z",
+          "source": "mobile-dashboard-case-brief"
         }
       }
     ],
@@ -182,6 +189,78 @@
           "prevHash": "104f5ddd60fc333cd5f020713312a318261cf3c1773ee854508a22271fcf8f54",
           "currentHash": "a3c2d78afd73d0aa88b7bb173fe5e67fea62f50ae492131f8156bcb3a3306d84",
           "createdAt": "2026-03-28T20:25:11.968Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-68270c01-f6a1-4037-a581-99706178a5c8",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "a3c2d78afd73d0aa88b7bb173fe5e67fea62f50ae492131f8156bcb3a3306d84",
+          "currentHash": "aa94df6bddd2812462a62ad2da137172619e758bd0f8a0cdd0a1117892018134",
+          "createdAt": "2026-04-04T10:25:18.199Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-e921a49a-b14f-4088-86c1-f696b3867fd9",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "aa94df6bddd2812462a62ad2da137172619e758bd0f8a0cdd0a1117892018134",
+          "currentHash": "8f8f1c2ef4d747c68871a512eb93ad77930cb5026ddb1b64e55797e9a82eb075",
+          "createdAt": "2026-04-04T10:25:18.199Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-3d20af15-b8d1-4af0-8b31-36ff6be90038",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "8f8f1c2ef4d747c68871a512eb93ad77930cb5026ddb1b64e55797e9a82eb075",
+          "currentHash": "f4d9d43a4b02c92f86e7096c3a352c17c749afa536794a853ffe952ab5f39d25",
+          "createdAt": "2026-04-04T10:37:43.101Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-6f7d8d35-24dd-4d6d-8a42-74e18aa7e170",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "f4d9d43a4b02c92f86e7096c3a352c17c749afa536794a853ffe952ab5f39d25",
+          "currentHash": "3c50d53a2699acb7466682f59e429ba36c875430a36eeaa340fee21dbd045678",
+          "createdAt": "2026-04-04T10:37:43.101Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-4e56bf9d-6584-4a3e-b7d2-89aaa5083d2a",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "3c50d53a2699acb7466682f59e429ba36c875430a36eeaa340fee21dbd045678",
+          "currentHash": "ca88f05f812419fd4ef701d18029b781ea16a4db94dc00fdf15fd5140178a180",
+          "createdAt": "2026-04-04T10:48:29.949Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-c10ea0b1-3c91-4cbe-b5d1-478d3ddd4b83",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "ca88f05f812419fd4ef701d18029b781ea16a4db94dc00fdf15fd5140178a180",
+          "currentHash": "cbd11205784c8acdc4615b77446fca2aa00f72a624c8eafe1e9e8d197925afb3",
+          "createdAt": "2026-04-04T10:48:29.949Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_fragments"
+        },
+        {
+          "entryId": "integrity-97e9fd82-aa28-4b3c-b8da-7def3cfebaaa",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "cbd11205784c8acdc4615b77446fca2aa00f72a624c8eafe1e9e8d197925afb3",
+          "currentHash": "a480cac1a4bacb5d905145e9c8fe23eb9f949e6ebd7cefaa4e97b233ed8ef4d6",
+          "createdAt": "2026-04-04T11:20:12.334Z",
+          "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        },
+        {
+          "entryId": "integrity-2ddd5527-ed86-47fa-bc68-d1a7d98a6451",
+          "caseId": "584b6b23-aeb8-4884-86af-38b9367c09ae",
+          "prevHash": "a480cac1a4bacb5d905145e9c8fe23eb9f949e6ebd7cefaa4e97b233ed8ef4d6",
+          "currentHash": "2156d6915da918235035e441248a913f7e69e19d51f39bb6a3c0f865b133a635",
+          "createdAt": "2026-04-04T11:20:12.335Z",
           "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
           "payloadType": "victim_fragments"
         }

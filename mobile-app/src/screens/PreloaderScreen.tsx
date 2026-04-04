@@ -129,7 +129,7 @@ export function PreloaderScreen({ message = "Preparing secure workspace..." }: P
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#080C13",
+    backgroundColor: "#0C1320",
     justifyContent: "center",
     alignItems: "center",
     gap: 16,
@@ -212,11 +212,11 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#FFD396",
+    color: "#FFD8A8",
     letterSpacing: 2.4,
   },
   message: {
-    color: "#D8DFEA",
+    color: "#DDE6F5",
     fontSize: 13,
     textAlign: "center",
     maxWidth: 230,

@@ -31,10 +31,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.accentStrong,
     shadowColor: "#492518",
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   buttonPressed: {
     backgroundColor: colors.accentStrong,
@@ -46,6 +46,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: "700",
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
 });

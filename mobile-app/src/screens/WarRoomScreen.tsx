@@ -16,6 +16,7 @@ import {
   normalizeTemporalPhraseForCurrentCase,
   predictLegalForCurrentCase,
   persistVoiceChatMessage,
+  saveVictimDetails,
   saveScreenDraft,
 } from "../services/apiClient";
 import { KAAL_CHAKRA_DECAY_ALERTS } from "../constants/saakshi";
@@ -116,7 +117,7 @@ export function WarRoomScreen({ navigation }: Props) {
           intelligenceData
             ? `Fake-victim risk band: ${intelligenceData.fakeVictimAssessment.band} (${Math.round(intelligenceData.fakeVictimAssessment.probability * 100)}%)`
             : "Fake-victim risk band: unavailable",
-          intelligenceData?.fakeVictimAssessment.flags.length
+          intelligenceData?.fakeVictimAssessment?.flags?.length
             ? `Risk flags: ${intelligenceData.fakeVictimAssessment.flags.join(", ")}`
             : "Risk flags: none",
           "",
@@ -125,6 +126,32 @@ export function WarRoomScreen({ navigation }: Props) {
         ].join("\n");
       setAnalysis(output);
       void saveScreenDraft("warroom.analysis", output);
+
+      const summarySnapshot = {
+        createdAt: new Date().toISOString(),
+        statement: facts.trim(),
+        strengthScore: resultData?.strengthScore ?? null,
+        readinessScore: intelligenceData?.readinessScore ?? null,
+        aiSummary: intelligenceData?.summary || "Using local fallback summary",
+        virodhi: (resultData?.virodhi || []).map((item) => `${item.title}: ${item.description}`),
+        raksha: (resultData?.raksha || []).map((item) => `${item.title}: ${item.description}`),
+        legalSuggestions: (intelligenceData?.legalSuggestions || []).slice(0, 5).map((item) => `${item.code}: ${item.title}`),
+        contradictionRisks: (intelligenceData?.contradictionRisks || []).slice(0, 5).map((item) => `${item.level}: ${item.title}`),
+        lawModelSummary: legalPredictionData?.summary || "Legal model currently unavailable",
+        temporalWindow: temporalData
+          ? `${temporalData.startDate} to ${temporalData.endDate} (${Math.round(temporalData.confidence * 100)}%)`
+          : "unavailable",
+        traumaBand: traumaData?.band || "n/a",
+        distressBand: distressData?.band || "n/a",
+        fakeVictimBand: intelligenceData?.fakeVictimAssessment?.band || "n/a",
+        source: "mobile-raksha",
+      };
+
+      void saveVictimDetails({
+        profile: {},
+        fragments: [`[raksha-summary-v1] ${JSON.stringify(summarySnapshot)}`],
+        source: "mobile-raksha-summary",
+      }).catch(() => undefined);
     } catch {
       setAnalysis("Raksha could not complete this run. Check backend and API keys, then retry.");
       void saveScreenDraft("warroom.analysis", "Raksha could not complete this run. Check backend and API keys, then retry.");

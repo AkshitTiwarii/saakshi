@@ -170,11 +170,17 @@ export function CaptureUploadScreen({ navigation }: Props) {
           ...items.map((item) => `[upload-file] ${item.kind} | ${item.name} | ${item.mimeType} | ${(item.size || 0).toString()} bytes | ${item.uri}`),
         ],
         source: "mobile-capture-upload",
+        forceCloudSync: true,
       }).catch(() => null);
 
       setResult(
         [
           ai ? [ai.emotion, ai.time, ai.location].filter(Boolean).join(" • ") : "Artifact marker saved",
+          writeRes?.localOnly
+            ? "Saved locally only (backend sync failed)"
+            : writeRes?.success
+            ? `Synced to backend (${Number(writeRes?.fragmentCount || 0)} total fragments)`
+            : "",
           writeRes?.integrity?.latestHash ? `Hash ${writeRes.integrity.latestHash.slice(0, 12)}...` : "",
         ]
           .filter(Boolean)

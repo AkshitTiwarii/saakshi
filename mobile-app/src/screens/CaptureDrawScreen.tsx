@@ -125,11 +125,17 @@ export function CaptureDrawScreen({ navigation }: Props) {
           `[draw-meta] strokes=${strokes.length} brush=${brushWidth} color=${brushColor}`,
         ],
         source: "mobile-capture-draw",
+        forceCloudSync: true,
       }).catch(() => null);
 
       setStatus(
         [
           ai ? [ai.emotion, ai.time, ai.location].filter(Boolean).join(" • ") : "Sketch marker saved",
+          writeRes?.localOnly
+            ? "Saved locally only (backend sync failed)"
+            : writeRes?.success
+            ? `Synced to backend (${Number(writeRes?.fragmentCount || 0)} total fragments)`
+            : "",
           writeRes?.integrity?.latestHash ? `Hash ${writeRes.integrity.latestHash.slice(0, 12)}...` : "",
         ]
           .filter(Boolean)

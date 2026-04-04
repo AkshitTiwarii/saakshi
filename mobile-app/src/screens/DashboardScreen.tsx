@@ -9,13 +9,23 @@ import { getHealth, getVictimSession, loadScreenDraft, saveScreenDraft, saveVict
 
 type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
 
-const cards = [
-  { title: "Capture", route: "CaptureMethod" as const, desc: "Speak, write, draw, or upload", tone: ["#B25F47", "#924631"] as const },
-  { title: "Khojak", route: "Khojak" as const, desc: "Find supporting evidence", tone: ["#7F9B76", "#5F7D57"] as const },
-  { title: "Raksha", route: "Raksha" as const, desc: "Plan legal next steps", tone: ["#8A4D3D", "#6A3528"] as const },
-  { title: "Pareeksha", route: "Pareeksha" as const, desc: "Prepare with confidence", tone: ["#6B8290", "#4D646F"] as const },
-  { title: "Command", route: "WebWorkspace" as const, desc: "Case overview and sync", tone: ["#736357", "#57483E"] as const },
-  { title: "Account", route: "Settings" as const, desc: "Privacy and safety", tone: ["#5A4B40", "#3E342E"] as const },
+type DashboardCardRoute = "CaptureMethod" | "Virodhi" | "Khojak" | "Raksha" | "Pareeksha" | "WebWorkspace" | "Settings";
+type DashboardCard = {
+  title: string;
+  route: DashboardCardRoute;
+  desc: string;
+  tone: readonly [string, string];
+  icon: string;
+};
+
+const cards: DashboardCard[] = [
+  { title: "Capture", route: "CaptureMethod", desc: "Speak, write, draw, or upload", tone: ["#B25F47", "#924631"] as const, icon: "create-outline" },
+  { title: "Virodhi", route: "Virodhi", desc: "See defense-side attack strategy", tone: ["#9E4E3B", "#7C3727"] as const, icon: "gavel" },
+  { title: "Khojak", route: "Khojak", desc: "Find supporting evidence", tone: ["#7F9B76", "#5F7D57"] as const, icon: "search-outline" },
+  { title: "Raksha", route: "Raksha", desc: "Plan legal next steps", tone: ["#8A4D3D", "#6A3528"] as const, icon: "shield-checkmark-outline" },
+  { title: "Pareeksha", route: "Pareeksha", desc: "Prepare with confidence", tone: ["#6B8290", "#4D646F"] as const, icon: "school-outline" },
+  { title: "Command", route: "WebWorkspace", desc: "Case overview and sync", tone: ["#736357", "#57483E"] as const, icon: "sync-outline" },
+  { title: "Account", route: "Settings", desc: "Privacy and safety", tone: ["#5A4B40", "#3E342E"] as const, icon: "person-circle-outline" },
 ];
 
 export function DashboardScreen({ navigation }: Props) {
@@ -89,14 +99,14 @@ export function DashboardScreen({ navigation }: Props) {
     }
   };
 
-  const cardRows: (typeof cards)[] = [];
+  const cardRows: DashboardCard[][] = [];
   for (let i = 0; i < cards.length; i += 2) {
     cardRows.push(cards.slice(i, i + 2));
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.heroTopWave} />
         <View style={styles.heroInline}> 
           <Text style={styles.brand}>SAAKSHI</Text>
@@ -183,8 +193,13 @@ export function DashboardScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 16, paddingTop: 14 },
-  scroll: { paddingBottom: 176, flexGrow: 1 },
+  container: {
+    flex: 1,
+    backgroundColor: colors.fog,
+  },
+  scrollContainer: {
+    padding: 16,
+  },
   heroTopWave: {
     height: 130,
     borderTopLeftRadius: 30,

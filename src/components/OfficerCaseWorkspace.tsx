@@ -102,6 +102,65 @@ type IntegrityVerificationResult = {
   };
 };
 
+type RakshaSummarySnapshot = {
+  createdAt: string;
+  source?: string;
+  statement?: string;
+  strengthScore?: number | null;
+  readinessScore?: number | null;
+  aiSummary?: string;
+  virodhi?: string[];
+  raksha?: string[];
+  legalSuggestions?: string[];
+  contradictionRisks?: string[];
+  lawModelSummary?: string;
+  temporalWindow?: string;
+  traumaBand?: string;
+  distressBand?: string;
+  fakeVictimBand?: string;
+};
+
+function parseRakshaSummarySnapshots(fragments: string[] = []): RakshaSummarySnapshot[] {
+  const snapshots: RakshaSummarySnapshot[] = [];
+
+  for (const fragment of fragments) {
+    const text = String(fragment || "").trim();
+    if (!text) continue;
+
+    const match = text.match(/^\[([^\]]+)\]\s*(.*)$/);
+    const tag = String(match?.[1] || "").toLowerCase();
+    if (tag !== "raksha-summary-v1") continue;
+
+    const payloadText = String(match?.[2] || "").trim();
+    if (!payloadText) continue;
+
+    try {
+      const parsed = JSON.parse(payloadText) as Partial<RakshaSummarySnapshot>;
+      snapshots.push({
+        createdAt: String(parsed.createdAt || new Date(0).toISOString()),
+        source: String(parsed.source || "mobile-raksha"),
+        statement: String(parsed.statement || "").trim(),
+        strengthScore: typeof parsed.strengthScore === "number" ? parsed.strengthScore : null,
+        readinessScore: typeof parsed.readinessScore === "number" ? parsed.readinessScore : null,
+        aiSummary: String(parsed.aiSummary || "").trim(),
+        virodhi: Array.isArray(parsed.virodhi) ? parsed.virodhi.map((item) => String(item)) : [],
+        raksha: Array.isArray(parsed.raksha) ? parsed.raksha.map((item) => String(item)) : [],
+        legalSuggestions: Array.isArray(parsed.legalSuggestions) ? parsed.legalSuggestions.map((item) => String(item)) : [],
+        contradictionRisks: Array.isArray(parsed.contradictionRisks) ? parsed.contradictionRisks.map((item) => String(item)) : [],
+        lawModelSummary: String(parsed.lawModelSummary || "").trim(),
+        temporalWindow: String(parsed.temporalWindow || "").trim(),
+        traumaBand: String(parsed.traumaBand || "").trim(),
+        distressBand: String(parsed.distressBand || "").trim(),
+        fakeVictimBand: String(parsed.fakeVictimBand || "").trim(),
+      });
+    } catch {
+      // Ignore malformed summary fragments to keep officer workspace stable.
+    }
+  }
+
+  return snapshots.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
 export function OfficerCaseWorkspace() {
   const navigate = useNavigate();
   const { caseId = '' } = useParams();
@@ -308,6 +367,11 @@ export function OfficerCaseWorkspace() {
     return buckets;
   }, [details?.victimFragments]);
 
+  const rakshaSummaries = useMemo(
+    () => parseRakshaSummarySnapshots(details?.victimFragments || []),
+    [details?.victimFragments]
+  );
+
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="mx-auto max-w-5xl space-y-5">
@@ -488,6 +552,98 @@ export function OfficerCaseWorkspace() {
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Uploads: {captureSummary.uploadCount}</div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Other: {captureSummary.otherCount}</div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">Source: {captureSummary.latestSource || 'n/a'}</div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-2xl p-5">
+              <h3 className="font-bold text-slate-900">Raksha Chat Timeline</h3>
+              <p className="text-xs text-slate-500 mt-1">Saved adversarial summaries from survivor runs, formatted as a readable officer review thread.</p>
+
+              {rakshaSummaries.length === 0 && (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                  No Raksha summary snapshots saved yet.
+                </div>
+              )}
+
+              <div className="mt-4 space-y-5">
+                {rakshaSummaries.map((snapshot, index) => (
+                  <div key={`${snapshot.createdAt}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="text-[11px] text-slate-500 mb-2">
+                      Run at: {snapshot.createdAt ? new Date(snapshot.createdAt).toLocaleString() : 'n/a'} | Source: {snapshot.source || 'n/a'}
+                    </div>
+
+                    <div className="flex justify-end">
+                      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-indigo-600 text-white px-4 py-3 text-sm leading-relaxed shadow-sm">
+                        {snapshot.statement || 'No statement captured for this run.'}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex justify-start">
+                      <div className="max-w-[95%] rounded-2xl rounded-bl-md bg-white border border-slate-200 px-4 py-3 text-sm text-slate-700 shadow-sm space-y-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                          <div className="rounded-lg bg-slate-100 px-2 py-1">Strength: {snapshot.strengthScore ?? 'n/a'}</div>
+                          <div className="rounded-lg bg-slate-100 px-2 py-1">Readiness: {snapshot.readinessScore ?? 'n/a'}</div>
+                          <div className="rounded-lg bg-slate-100 px-2 py-1">Trauma: {snapshot.traumaBand || 'n/a'}</div>
+                          <div className="rounded-lg bg-slate-100 px-2 py-1">Distress: {snapshot.distressBand || 'n/a'}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">AI Summary</div>
+                          <div className="mt-1">{snapshot.aiSummary || 'No summary available.'}</div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-rose-600">Virodhi Pressure Points</div>
+                            <div className="mt-1 space-y-1">
+                              {(snapshot.virodhi || []).slice(0, 4).map((item, itemIdx) => (
+                                <div key={`v-${itemIdx}`} className="text-xs">- {item}</div>
+                              ))}
+                              {(snapshot.virodhi || []).length === 0 && <div className="text-xs text-slate-500">- none</div>}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Raksha Counter Strategy</div>
+                            <div className="mt-1 space-y-1">
+                              {(snapshot.raksha || []).slice(0, 4).map((item, itemIdx) => (
+                                <div key={`r-${itemIdx}`} className="text-xs">- {item}</div>
+                              ))}
+                              {(snapshot.raksha || []).length === 0 && <div className="text-xs text-slate-500">- none</div>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Legal Suggestions</div>
+                            <div className="mt-1 space-y-1">
+                              {(snapshot.legalSuggestions || []).slice(0, 4).map((item, itemIdx) => (
+                                <div key={`l-${itemIdx}`} className="text-xs">- {item}</div>
+                              ))}
+                              {(snapshot.legalSuggestions || []).length === 0 && <div className="text-xs text-slate-500">- none</div>}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contradiction Risks</div>
+                            <div className="mt-1 space-y-1">
+                              {(snapshot.contradictionRisks || []).slice(0, 4).map((item, itemIdx) => (
+                                <div key={`c-${itemIdx}`} className="text-xs">- {item}</div>
+                              ))}
+                              {(snapshot.contradictionRisks || []).length === 0 && <div className="text-xs text-slate-500">- none</div>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-slate-500">
+                          Law model: {snapshot.lawModelSummary || 'n/a'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Temporal window: {snapshot.temporalWindow || 'n/a'} | Fake-victim band: {snapshot.fakeVictimBand || 'n/a'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 

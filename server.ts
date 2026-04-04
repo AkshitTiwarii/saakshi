@@ -304,6 +304,171 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+async function fetchJsonWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const text = await response.text();
+    let data: unknown = {};
+    try {
+      data = JSON.parse(text || "{}");
+    } catch {
+      data = { raw: text };
+    }
+    return { ok: response.ok, status: response.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function toNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const earthRadius = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * earthRadius * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+async function geocodeLocationLabel(locationLabel: string) {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(locationLabel)}`;
+  const response = await fetchJsonWithTimeout(url, {
+    headers: {
+      "User-Agent": "Saakshi/1.0 (+https://example.local)",
+      Accept: "application/json",
+    },
+  }, 15000);
+
+  if (!response.ok || !Array.isArray(response.data) || !response.data.length) {
+    return null;
+  }
+
+  const first = response.data[0] as Record<string, unknown>;
+  const lat = Number(first.lat);
+  const lon = Number(first.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+
+  return {
+    lat,
+    lon,
+    displayName: String(first.display_name || locationLabel),
+  };
+}
+
+async function lookupNearbyCameras(locationLabel: string, radiusMeters: number) {
+  const center = await geocodeLocationLabel(locationLabel);
+  if (!center) {
+    return {
+      provider: "nominatim+overpass",
+      center: null,
+      cameras: [],
+      hint: "Could not geocode the location. Try a nearby landmark, street name, or area name.",
+    };
+  }
+
+  const radius = Math.max(250, Math.min(5000, radiusMeters));
+  const overpassQuery = `
+[out:json][timeout:25];
+(
+  node(around:${radius},${center.lat},${center.lon})["man_made"="surveillance"];
+  node(around:${radius},${center.lat},${center.lon})["surveillance"~"camera|video",i];
+  node(around:${radius},${center.lat},${center.lon})["camera:type"];
+  way(around:${radius},${center.lat},${center.lon})["man_made"="surveillance"];
+  way(around:${radius},${center.lat},${center.lon})["surveillance"~"camera|video",i];
+  relation(around:${radius},${center.lat},${center.lon})["man_made"="surveillance"];
+);
+out center tags;`;
+
+  const response = await fetchJsonWithTimeout("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      Accept: "application/json",
+      "User-Agent": "Saakshi/1.0 (+https://example.local)",
+    },
+    body: `data=${encodeURIComponent(overpassQuery)}`,
+  }, 20000);
+
+  if (!response.ok || typeof response.data !== "object" || !response.data) {
+    return {
+      provider: "nominatim+overpass",
+      center,
+      cameras: [],
+      hint: "Overpass lookup failed. Try a smaller area or a clearer landmark.",
+    };
+  }
+
+  const elements = Array.isArray((response.data as any).elements) ? (response.data as any).elements : [];
+  const cameras = elements
+    .map((element: any) => {
+      const lat = Number(element.lat ?? element.center?.lat);
+      const lon = Number(element.lon ?? element.center?.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      const tags = element.tags || {};
+      const name = String(tags.name || tags.ref || tags.operator || "Unnamed camera");
+      const type = String(tags["camera:type"] || tags.man_made || tags.surveillance || "surveillance");
+      const distanceMeters = Math.round(haversineMeters(center.lat, center.lon, lat, lon));
+      return {
+        id: `${element.type}/${element.id}`,
+        name,
+        type,
+        source: String(tags.operator || tags.manufacturer || "OpenStreetMap / Overpass"),
+        distanceMeters,
+        lat,
+        lon,
+      };
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => a.distanceMeters - b.distanceMeters)
+    .slice(0, 20);
+
+  return {
+    provider: "nominatim+overpass",
+    center,
+    cameras,
+    hint: cameras.length ? `${cameras.length} camera-related OSM elements found nearby.` : "No camera-related OSM elements were found nearby.",
+  };
+}
+
+async function lookupMerchantTransactionRecord(params: { merchantTransactionId: string; googleMerchantId: string }) {
+  const accessToken = String(process.env.GOOGLE_PAY_ACCESS_TOKEN || process.env.GOOGLE_OAUTH_ACCESS_TOKEN || "").trim();
+  if (!accessToken) {
+    return {
+      ok: false as const,
+      status: 503,
+      data: {
+        error: {
+          code: 503,
+          status: "UNAVAILABLE",
+          message: "Google Pay access token is not configured on the server",
+        },
+      },
+    };
+  }
+
+  return fetchJsonWithTimeout("https://nbupayments.googleapis.com/v1/merchantTransactions:get", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      merchantInfo: { googleMerchantId: params.googleMerchantId },
+      transactionIdentifier: { merchantTransactionId: params.merchantTransactionId },
+    }),
+  }, 20000);
+}
+
 async function callMlService(pathname: string, payload: Record<string, unknown>, timeoutMs = 20000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -419,6 +584,77 @@ function isGeminiQuotaError(error: unknown): boolean {
   const err = error as { status?: number; message?: string };
   const message = String(err?.message || "").toLowerCase();
   return Number(err?.status || 0) === 429 || message.includes("rate_limit_exceeded") || message.includes("quota exceeded");
+}
+
+function getGeminiModel(fallback = "gemini-2.5-flash") {
+  return String(process.env.GEMINI_MODEL || fallback).trim() || fallback;
+}
+
+function getVertexApiKey() {
+  return String(
+    process.env.VERTEX_API_KEY ||
+      process.env.VERTEX_AI_API_KEY ||
+      process.env.VERTEX_GEMINI_API_KEY ||
+      ""
+  ).trim();
+}
+
+function getVertexModel(fallback = "gemini-2.5-flash-lite") {
+  return String(process.env.VERTEX_MODEL || fallback).trim() || fallback;
+}
+
+function extractTextFromModelResponsePayload(payload: unknown) {
+  const candidates: Array<Record<string, unknown>> = [];
+
+  const pushCandidates = (value: unknown) => {
+    const list = Array.isArray((value as any)?.candidates) ? (value as any).candidates : [];
+    for (const candidate of list) {
+      if (candidate && typeof candidate === "object") {
+        candidates.push(candidate as Record<string, unknown>);
+      }
+    }
+  };
+
+  if (Array.isArray(payload)) {
+    for (const chunk of payload) {
+      pushCandidates(chunk);
+    }
+  } else {
+    pushCandidates(payload);
+  }
+
+  const texts: string[] = [];
+  for (const candidate of candidates) {
+    const parts = Array.isArray((candidate as any)?.content?.parts) ? (candidate as any).content.parts : [];
+    for (const part of parts) {
+      if (typeof part?.text === "string") {
+        const normalized = String(part.text).trim();
+        if (normalized) texts.push(normalized);
+      }
+    }
+  }
+
+  if (texts.length) return texts.join("\n").trim();
+  if (typeof (payload as any)?.text === "string") return String((payload as any).text || "").trim();
+  return "";
+}
+
+function buildCaseContextDigest(caseId: string, incomingFragments: string[] = []) {
+  const assignment = caseAssignments.get(caseId);
+  const payload = victimDetailsByCase.get(caseId);
+  const storedFragments = (payload?.fragments || []).map((fragment) => String(fragment || "").trim()).filter(Boolean);
+  const mergedFragments = uniqueStrings([...storedFragments, ...incomingFragments]);
+  const recentFragments = mergedFragments.slice(-18);
+  const profile = payload?.profile;
+
+  return {
+    assignment,
+    profile,
+    recentFragments,
+    legalSuggestions: extractLegalSectionsFromFragments(recentFragments),
+    contradictionRisks: buildContradictionRisks(recentFragments),
+    fakeVictimAssessment: buildFakeVictimAssessment(recentFragments),
+  };
 }
 
 function buildFakeVictimAssessment(fragments: string[]) {
@@ -1173,7 +1409,7 @@ async function startServer() {
       if (!content) return res.status(400).json({ error: "content is required" });
 
       const response = await ai!.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: getGeminiModel(),
         contents: `Analyze this memory fragment and extract time clues, location clues, and sensory details. Fragment: "${content}"`,
         config: {
           responseMimeType: "application/json",
@@ -1201,7 +1437,7 @@ async function startServer() {
         })
       );
 
-      res.json(JSON.parse(response.text));
+      res.json(JSON.parse(response.text || "{}"));
     } catch (error) {
       console.error("classify-fragment failed", error);
       if (isGeminiQuotaError(error)) {
@@ -1236,7 +1472,7 @@ async function startServer() {
       if (!base64Image) return res.status(400).json({ error: "base64Image is required" });
 
       const response = await ai!.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: getGeminiModel(),
         contents: {
           parts: [
             { inlineData: { data: base64Image.split(",")[1], mimeType: "image/png" } },
@@ -1270,7 +1506,7 @@ async function startServer() {
         })
       );
 
-      res.json(JSON.parse(response.text));
+      res.json(JSON.parse(response.text || "{}"));
     } catch (error) {
       console.error("analyze-image failed", error);
       res.status(500).json({ error: "Image analysis failed" });
@@ -1283,7 +1519,7 @@ async function startServer() {
       if (!query) return res.status(400).json({ error: "query is required" });
 
       const response = await ai!.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: getGeminiModel(),
         contents: `Search for digital evidence or public records related to: "${query}". Focus on weather data, transit records, or local events that could verify this timeline.`,
         config: { tools: [{ googleSearch: {} }] },
       });
@@ -1307,16 +1543,99 @@ async function startServer() {
     }
   });
 
+  app.post("/api/evidence/nearby-cameras", requireConsentForPurpose("analysis"), async (req, res) => {
+    try {
+      const caseId = String(req.body?.caseId || "").trim();
+      const locationLabel = String(req.body?.locationLabel || req.body?.location || "").trim();
+      const radiusMetersRaw = Number(req.body?.radiusMeters ?? 1200);
+      const radiusMeters = Number.isFinite(radiusMetersRaw) ? radiusMetersRaw : 1200;
+
+      if (!caseId || !locationLabel) {
+        return res.status(400).json({ error: "caseId and locationLabel are required" });
+      }
+
+      const result = await lookupNearbyCameras(locationLabel, radiusMeters);
+      res.json({
+        caseId,
+        locationLabel,
+        radiusMeters: Math.max(250, Math.min(5000, radiusMeters)),
+        center: result.center,
+        cameras: result.cameras,
+        provider: result.provider,
+        hint: result.hint,
+      });
+    } catch (error) {
+      console.error("nearby-cameras failed", error);
+      res.status(500).json({ error: "Nearby camera lookup failed" });
+    }
+  });
+
+  app.post("/api/evidence/merchant-transaction", requireConsentForPurpose("analysis"), async (req, res) => {
+    try {
+      const caseId = String(req.body?.caseId || "").trim();
+      const merchantTransactionId = String(req.body?.merchantTransactionId || req.body?.transactionId || "").trim();
+      const googleMerchantId = String(req.body?.googleMerchantId || process.env.GOOGLE_MERCHANT_ID || "").trim();
+
+      if (!caseId || !merchantTransactionId) {
+        return res.status(400).json({ error: "caseId and merchantTransactionId are required" });
+      }
+      if (!googleMerchantId) {
+        return res.status(400).json({ error: "googleMerchantId is required" });
+      }
+
+      const lookup = await lookupMerchantTransactionRecord({ merchantTransactionId, googleMerchantId });
+      if (!lookup.ok) {
+        return res.status(lookup.status).json(lookup.data);
+      }
+
+      res.json({
+        caseId,
+        provider: "nbupayments.googleapis.com",
+        transactionId: merchantTransactionId,
+        googleMerchantId,
+        transaction: lookup.data,
+      });
+    } catch (error) {
+      console.error("merchant-transaction lookup failed", error);
+      res.status(500).json({ error: "Merchant transaction lookup failed" });
+    }
+  });
+
   app.post("/api/ai/adversarial-analysis", requireConsentForPurpose("analysis"), async (req, res) => {
     try {
-      const fragments = req.body?.fragments ?? [];
+      const caseId = String(req.body?.caseId || "").trim();
+      const fragments = Array.isArray(req.body?.fragments)
+        ? req.body.fragments.map((item: any) => String(item?.content || "").trim()).filter(Boolean)
+        : [];
       const evidence = req.body?.evidence ?? [];
+      const model = String(process.env.GEMINI_MODEL || "gemini-2.5-flash").trim();
+      const context = caseId ? buildCaseContextDigest(caseId, fragments) : null;
+      const role = String(req.header("x-user-role") || "survivor").trim();
+      const actorId = String(req.header("x-user-id") || "anonymous").trim();
 
       const response = await ai!.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: `You are an adversarial AI system. Fragments: ${JSON.stringify(fragments)} Evidence: ${JSON.stringify(evidence)}
-1. Act as VIRODHI (Attack Engine): Find weaknesses in the story, predict cross-questions.
-2. Act as RAKSHA (Defense Engine): Build legal/neuroscience-backed responses, pull Supreme Court judgments.`,
+        model,
+        contents: `You are Saakshi's adversarial legal-prep engine for India.
+Simulate how a defense lawyer may challenge testimony and then produce trauma-informed counter-strategy.
+
+Actor context:
+- actorId: ${actorId}
+- role: ${role}
+
+Case context from backend:
+${JSON.stringify(context, null, 2)}
+
+Incoming fragments from current screen:
+${JSON.stringify(fragments, null, 2)}
+
+Evidence inputs:
+${JSON.stringify(evidence, null, 2)}
+
+Task:
+1) VIRODHI: include predictable pressure patterns such as caste/social prejudice, family-pressure narratives, character attacks, reporting-delay exploitation, and hostile-witness tactics when relevant to context.
+2) RAKSHA: provide specific, user-actionable legal-prep defenses tied to this case context.
+3) Keep output concise and structured for mobile UI.
+4) This is legal preparation support, not legal advice.`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -1363,10 +1682,83 @@ async function startServer() {
         })
       );
 
-      res.json(JSON.parse(response.text));
+      res.json(JSON.parse(response.text || "{}"));
     } catch (error) {
       console.error("adversarial-analysis failed", error);
       res.status(500).json({ error: "Adversarial analysis failed" });
+    }
+  });
+
+  app.post("/api/ai/virodhi-query", requireConsentForPurpose("analysis"), async (req, res) => {
+    try {
+      const caseId = String(req.body?.caseId || "").trim();
+      const query = String(req.body?.query || "").trim();
+      const history = Array.isArray(req.body?.history) ? req.body.history.slice(-8) : [];
+      const model = String(process.env.GEMINI_MODEL || "gemini-2.5-flash").trim();
+
+      if (!caseId || !query) {
+        return res.status(400).json({ error: "caseId and query are required" });
+      }
+
+      const context = buildCaseContextDigest(caseId);
+      const reply = await ai!.models.generateContent({
+        model,
+        contents: `You are VIRODHI (विरोधी), a simulation engine for legal preparation in India.
+You think like a sharp Indian defense lawyer and challenge weak points in a survivor narrative.
+
+Rules:
+- Be realistic, specific, and case-grounded.
+- Focus on adversarial strategy vectors like: caste/social bias, family pressure, character attacks, delay exploitation, hostile witness tactics, and evidentiary gaps.
+- Do not fabricate facts not present in context.
+- Provide output that helps user prepare safer and stronger testimony.
+
+Case context (from backend truth):
+${JSON.stringify(context, null, 2)}
+
+Recent conversation history:
+${JSON.stringify(history, null, 2)}
+
+User query:
+${query}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              answer: { type: Type.STRING },
+              attackVectors: { type: Type.ARRAY, items: { type: Type.STRING } },
+              gapsToFix: { type: Type.ARRAY, items: { type: Type.STRING } },
+              recommendedEvidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+              confidence: { type: Type.NUMBER },
+            },
+          },
+        },
+      });
+
+      const parsed = JSON.parse(reply.text || "{}") as {
+        answer?: string;
+        attackVectors?: string[];
+        gapsToFix?: string[];
+        recommendedEvidence?: string[];
+        confidence?: number;
+      };
+
+      res.json({
+        caseId,
+        provider: `gemini:${model}`,
+        answer: String(parsed.answer || ""),
+        attackVectors: Array.isArray(parsed.attackVectors) ? parsed.attackVectors : [],
+        gapsToFix: Array.isArray(parsed.gapsToFix) ? parsed.gapsToFix : [],
+        recommendedEvidence: Array.isArray(parsed.recommendedEvidence) ? parsed.recommendedEvidence : [],
+        confidence: Number(parsed.confidence || 0),
+        contextSnapshot: {
+          fragmentCount: context.recentFragments.length,
+          hasIncidentSummary: Boolean(context.profile?.incidentSummary),
+        },
+      });
+    } catch (error) {
+      console.error("virodhi-query failed", error);
+      res.status(500).json({ error: "Virodhi query failed" });
     }
   });
 
@@ -1375,7 +1767,7 @@ async function startServer() {
       const fragments = req.body?.fragments ?? [];
 
       const response = await ai!.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: getGeminiModel(),
         contents: `You are a defense lawyer cross-examining a witness. Fragments: ${JSON.stringify(fragments)}
 1. Generate a tough, adversarial question based on these fragments.
 2. Provide AI coaching on how to respond firmly and calmly.`,
@@ -1404,7 +1796,7 @@ async function startServer() {
         })
       );
 
-      res.json(JSON.parse(response.text));
+      res.json(JSON.parse(response.text || "{}"));
     } catch (error) {
       console.error("cross-examination failed", error);
       res.status(500).json({ error: "Cross-examination generation failed" });
@@ -1497,10 +1889,11 @@ async function startServer() {
 
   app.post("/api/voice/transcribe", requireConsentForPurpose("analysis"), async (req, res) => {
     try {
-      if (!googleSpeechClient && !ai) {
+      const vertexApiKey = getVertexApiKey();
+      if (!googleSpeechClient && !ai && !vertexApiKey) {
         return res.status(503).json({
           error: "Voice transcription is not configured on server",
-          hint: "Set GOOGLE_APPLICATION_CREDENTIALS and/or GEMINI_API_KEY on backend host",
+          hint: "Set GOOGLE_APPLICATION_CREDENTIALS and/or GEMINI_API_KEY and/or VERTEX_API_KEY on backend host",
         });
       }
 
@@ -1545,9 +1938,101 @@ async function startServer() {
         return wordsPerMinute > 230;
       };
 
+      const looksLikeModelRefusal = (text: string) => {
+        const normalized = String(text || "").trim().toLowerCase();
+        if (!normalized) return false;
+
+        const refusalPatterns = [
+          "i'm sorry",
+          "i am sorry",
+          "cannot fulfill",
+          "can't fulfill",
+          "unable to transcribe",
+          "unable to fulfill",
+          "audio provided is not in english",
+          "not in english",
+          "cannot transcribe",
+          "can't transcribe",
+          "i cannot",
+          "i can't",
+          "request cannot be completed",
+        ];
+
+        return refusalPatterns.some((pattern) => normalized.includes(pattern));
+      };
+
+      let bestEffortTranscript = "";
+
+      const tryVertexTranscription = async () => {
+        if (!vertexApiKey) return null;
+
+        const vertexModels = uniqueStrings([getVertexModel(), "gemini-2.5-flash-lite", "gemini-2.5-flash"]);
+        for (const model of vertexModels) {
+          for (const mime of mimeCandidates) {
+            try {
+              const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(vertexApiKey)}`;
+              const response = await fetchJsonWithTimeout(
+                url,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    contents: [
+                      {
+                        role: "user",
+                        parts: [
+                          {
+                            inlineData: {
+                              mimeType: mime,
+                              data: audioBase64,
+                            },
+                          },
+                          {
+                            text: `Transcribe this spoken audio verbatim in ${languageCode}. Do not translate. Output only the transcript text with no explanations. If speech is unclear, empty, or not decodable, return exactly: [NO_MATCH].`,
+                          },
+                        ],
+                      },
+                    ],
+                    generationConfig: {
+                      temperature: 0,
+                      topP: 0.1,
+                      maxOutputTokens: 2048,
+                    },
+                  }),
+                },
+                25000
+              );
+
+              if (!response.ok) continue;
+
+              const vertexText = extractTextFromModelResponsePayload(response.data).trim();
+              if (vertexText && !bestEffortTranscript) {
+                bestEffortTranscript = vertexText;
+              }
+
+              if (
+                vertexText &&
+                vertexText !== "[NO_MATCH]" &&
+                !looksLikeModelRefusal(vertexText) &&
+                !looksLikeWrongLanguage(vertexText) &&
+                !looksLikeDurationMismatch(vertexText)
+              ) {
+                return { transcript: vertexText, provider: `vertex-audio(${model})` };
+              }
+            } catch {
+              // Try next model/mime pair.
+            }
+          }
+        }
+
+        return null;
+      };
+
       const tryGeminiTranscription = async () => {
         if (!ai) return null;
-        const geminiModels = ["gemini-3.1-pro-preview", "gemini-3-flash-preview"];
+        const geminiModels = uniqueStrings([getGeminiModel(), "gemini-2.5-flash"]);
 
         for (const model of geminiModels) {
           for (const mime of mimeCandidates) {
@@ -1563,16 +2048,20 @@ async function startServer() {
                       },
                     },
                     {
-                      text: `Transcribe this spoken audio verbatim in ${languageCode}. Do not translate. If speech is mostly in another language or unclear, return exactly: [NO_MATCH].`,
+                      text: `Transcribe this spoken audio verbatim in ${languageCode}. Do not translate. Output only the transcript text with no explanations. If speech is unclear, empty, or not decodable, return exactly: [NO_MATCH].`,
                     },
                   ],
                 },
               });
 
               const geminiText = String(geminiResponse.text || "").trim();
+              if (geminiText && !bestEffortTranscript) {
+                bestEffortTranscript = geminiText;
+              }
               if (
                 geminiText &&
                 geminiText !== "[NO_MATCH]" &&
+                !looksLikeModelRefusal(geminiText) &&
                 !looksLikeWrongLanguage(geminiText) &&
                 !looksLikeDurationMismatch(geminiText)
               ) {
@@ -1585,6 +2074,41 @@ async function startServer() {
         }
 
         return null;
+      };
+
+      const tryGoogleNlpFallback = async () => {
+        if (!googleNlpClient || !bestEffortTranscript.trim()) return null;
+
+        const normalizedBestEffort = bestEffortTranscript.trim().toUpperCase();
+        if (
+          normalizedBestEffort === "[NO_MATCH]" ||
+          normalizedBestEffort === "NO_MATCH"
+        ) {
+          return null;
+        }
+
+        try {
+          const document = {
+            content: bestEffortTranscript,
+            type: "PLAIN_TEXT" as const,
+          };
+
+          const [entityResponse] = await googleNlpClient.analyzeEntities({ document, encodingType: "UTF8" });
+          const keywords = (entityResponse.entities || [])
+            .map((entity) => String(entity.name || "").trim())
+            .filter(Boolean)
+            .slice(0, 8);
+
+          if (!keywords.length) return null;
+
+          return {
+            transcript: `Possible key phrases: ${keywords.join(", ")}`,
+            provider: "google-language(fallback)",
+            confidence: 0.34,
+          };
+        } catch {
+          return null;
+        }
       };
 
       const baseConfig: {
@@ -1695,7 +2219,7 @@ async function startServer() {
       let speechRes: any | undefined;
       let finalTranscript = "";
       let finalConfidence = 0;
-      let usedProvider = "google-speech";
+      let usedProvider = googleSpeechClient ? "google-speech" : "none";
       let lastError: unknown = null;
       let sawSuccessfulSpeechResponse = false;
 
@@ -1745,12 +2269,37 @@ async function startServer() {
       }
 
       if (!finalTranscript) {
+        const vertexResult = await tryVertexTranscription();
+        if (vertexResult?.transcript) {
+          finalTranscript = vertexResult.transcript;
+          finalConfidence = 0.64;
+          usedProvider = googleSpeechClient ? `${usedProvider}+${vertexResult.provider}` : vertexResult.provider;
+        }
+      }
+
+      if (!finalTranscript) {
         const geminiResult = await tryGeminiTranscription();
         if (geminiResult?.transcript) {
           finalTranscript = geminiResult.transcript;
           finalConfidence = 0.61;
           usedProvider = googleSpeechClient ? `${usedProvider}+${geminiResult.provider}` : geminiResult.provider;
         }
+      }
+
+      if (!finalTranscript) {
+        const nlpFallback = await tryGoogleNlpFallback();
+        if (nlpFallback?.transcript) {
+          finalTranscript = nlpFallback.transcript;
+          finalConfidence = Number(nlpFallback.confidence.toFixed(3));
+          usedProvider = usedProvider === "none" ? nlpFallback.provider : `${usedProvider}+${nlpFallback.provider}`;
+        }
+      }
+
+      if (!finalTranscript) {
+        return res.status(422).json({
+          error: "Voice transcription failed: no intelligible speech could be extracted from audio",
+          hint: "Retry in a quieter environment and keep recording between 3-20 seconds.",
+        });
       }
 
       const ctx = res.locals.auditContext;

@@ -334,6 +334,16 @@ const styles = StyleSheet.create({
   content: {
     marginTop: 96,
     gap: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 24,
+    padding: 18,
+    shadowColor: "#1F2A3D",
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
   },
   brand: {
     color: colors.accent,
@@ -358,7 +368,7 @@ const styles = StyleSheet.create({
     padding: 14,
     backgroundColor: "rgba(255,255,255,0.9)",
     borderWidth: 1,
-    borderColor: "rgba(35, 53, 78, 0.08)",
+    borderColor: colors.border,
     gap: 6,
   },
   flowHeading: {
@@ -378,11 +388,11 @@ const styles = StyleSheet.create({
   },
   modeRow: {
     flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.65)",
+    backgroundColor: colors.panel,
     borderRadius: 999,
     padding: 4,
     borderWidth: 1,
-    borderColor: "rgba(35,53,78,0.1)",
+    borderColor: colors.border,
   },
   modeTab: {
     flex: 1,
@@ -391,7 +401,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modeTabActive: {
-    backgroundColor: "#DDE3FF",
+    backgroundColor: colors.accentSoft,
   },
   modeLabel: {
     color: colors.mutedInk,
@@ -399,7 +409,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   modeLabelActive: {
-    color: "#2E46AA",
+    color: colors.accentStrong,
   },
   statusText: {
     textAlign: "center",
@@ -409,13 +419,13 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(35, 53, 78, 0.18)",
+    borderColor: colors.border,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     color: colors.ink,
-    backgroundColor: "rgba(255,255,255,0.75)",
+    backgroundColor: colors.white,
   },
   infoText: {
     textAlign: "center",

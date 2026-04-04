@@ -21,6 +21,7 @@ import { PareekshaScreen } from "./src/screens/PareekshaScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { DocsScreen } from "./src/screens/DocsScreen";
 import { WorkspaceWebScreen } from "./src/screens/WorkspaceWebScreen";
+import { VirodhiScreen } from "./src/screens/VirodhiScreen";
 import { PreloaderScreen } from "./src/screens/PreloaderScreen";
 import { hydrateVictimSessionFromLocal, registerVictimFromIdentity } from "./src/services/apiClient";
 
@@ -34,6 +35,7 @@ export type RootStackParamList = {
   CaptureDraw: { mood?: string } | undefined;
   CaptureUpload: { mood?: string } | undefined;
   Khojak: undefined;
+  Virodhi: undefined;
   Raksha: undefined;
   Pareeksha: undefined;
   Settings: undefined;
@@ -140,6 +142,7 @@ function MobileNavigator() {
             <Stack.Screen name="CaptureDraw" component={CaptureDrawScreen} />
             <Stack.Screen name="CaptureUpload" component={CaptureUploadScreen} />
             <Stack.Screen name="Khojak" component={KhojakScreen} />
+            <Stack.Screen name="Virodhi" component={VirodhiScreen} />
             <Stack.Screen name="Raksha" component={WarRoomScreen} />
             <Stack.Screen name="Pareeksha" component={PareekshaScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />

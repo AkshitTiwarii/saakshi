@@ -175,7 +175,7 @@ export function WorkspaceWebScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#E9EEF7", paddingHorizontal: 14, paddingTop: 10 },
+  container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 14, paddingTop: 10 },
   scroll: { gap: 12, paddingBottom: 124 },
   hero: {
     backgroundColor: "#102A44",
@@ -202,17 +202,23 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   panel: {
-    backgroundColor: colors.white,
-    borderRadius: 18,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
     padding: 14,
     gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: "#1F2A3D",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
   },
   panelTitle: { color: colors.ink, fontSize: 17, fontWeight: "800" },
   input: {
     backgroundColor: colors.white,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#DDE6F3",
+    borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: colors.ink,
@@ -263,9 +269,11 @@ const styles = StyleSheet.create({
   },
   quickCard: {
     flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 18,
     padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   quickTitle: { color: colors.ink, fontWeight: "800", fontSize: 15 },
   quickDesc: { color: colors.mutedInk, fontSize: 12, marginTop: 3 },

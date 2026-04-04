@@ -34,6 +34,34 @@ export type EvidenceAutoDiscoverResult = {
   clueGraph: { memoryNodes: number; evidenceLeads: number };
 };
 
+export type NearbyCameraSearchResult = {
+  caseId: string;
+  locationLabel: string;
+  radiusMeters: number;
+  center: { lat: number; lon: number; displayName: string };
+  cameras: Array<{
+    id: string;
+    name: string;
+    type: string;
+    source: string;
+    distanceMeters: number;
+    lat: number;
+    lon: number;
+  }>;
+  provider: string;
+  hint?: string;
+};
+
+export type MerchantTransactionLookupResult = {
+  caseId: string;
+  provider: string;
+  transactionId: string;
+  googleMerchantId: string;
+  transaction?: Record<string, unknown> | null;
+  raw?: unknown;
+  hint?: string;
+};
+
 export type FakeVictimAssessmentResult = {
   caseId: string;
   assessment: {
@@ -89,6 +117,43 @@ export type DistressCalibrationResult = {
   score: number;
   band: "LOW" | "MEDIUM" | "HIGH";
   recommendedPace: string;
+};
+
+export type VirodhiQueryResult = {
+  caseId: string;
+  provider: string;
+  answer: string;
+  attackVectors: string[];
+  gapsToFix: string[];
+  recommendedEvidence: string[];
+  confidence: number;
+  contextSnapshot?: {
+    fragmentCount: number;
+    hasIncidentSummary: boolean;
+  };
+};
+
+export type VictimCaseOverviewResult = {
+  caseAssignment: {
+    caseId: string;
+    caseNumber: string;
+    victimUniqueId: string;
+  };
+  profile: {
+    incidentSummary?: string;
+    phone?: string;
+    emergencyContact?: string;
+    displayName?: string;
+    email?: string;
+    updatedAt?: string;
+  } | null;
+  fragments: string[];
+  metadata?: Record<string, unknown>;
+  integrity: {
+    entryCount: number;
+    latestHash: string | null;
+    latestAt: string | null;
+  };
 };
 
 type VictimSession = {
@@ -175,7 +240,8 @@ export async function hydrateVictimSessionFromLocal() {
 }
 
 export function isCloudSyncEnabled() {
-  return String((globalThis as any)?.process?.env?.EXPO_PUBLIC_ENABLE_CLOUD_SYNC || "false") === "true";
+  const raw = String((globalThis as any)?.process?.env?.EXPO_PUBLIC_ENABLE_CLOUD_SYNC || "true").trim().toLowerCase();
+  return raw !== "false";
 }
 
 export async function saveScreenDraft(key: string, value: string) {
@@ -189,6 +255,16 @@ export async function loadScreenDraft(key: string) {
 export async function getLocalCaseCacheForCurrentSession() {
   const caseId = victimSession?.caseId || "demo-case-001";
   return getCaseLocalSnapshot(caseId);
+}
+
+export async function getVictimCaseOverviewForCurrentSession() {
+  if (!victimSession?.victimUniqueId) {
+    return null;
+  }
+
+  return request<VictimCaseOverviewResult>(
+    `/api/victim/case-overview?victimUniqueId=${encodeURIComponent(victimSession.victimUniqueId)}`
+  ).catch(() => null);
 }
 
 export type VoiceAssistantMode = "neutral" | "strict" | "supportive_lawyer";
@@ -319,6 +395,7 @@ export async function saveVictimDetails(payload: {
     return {
       success: true,
       localOnly: true,
+      fragmentCount: Array.isArray(payload.fragments) ? payload.fragments.length : 0,
       integrity: {
         latestHash: localIntegrity.latestHash,
         profileHash: localIntegrity.profileHash,
@@ -330,6 +407,7 @@ export async function saveVictimDetails(payload: {
   try {
     const remote = await request<{
       success: boolean;
+      fragmentCount?: number;
       integrity: { latestHash: string; profileHash: string; previousHash: string };
     }>("/api/victim/save-details", {
       method: "POST",
@@ -357,6 +435,8 @@ export async function saveVictimDetails(payload: {
     return {
       success: true,
       localOnly: true,
+      fragmentCount: Array.isArray(payload.fragments) ? payload.fragments.length : 0,
+      cloudSyncError: "Cloud sync failed; data is saved locally only.",
       integrity: {
         latestHash: localIntegrity.latestHash,
         profileHash: localIntegrity.profileHash,
@@ -505,6 +585,47 @@ export function autoDiscoverEvidenceForCurrentCase(queryHint: string) {
     autoQuery: queryHint,
     leads: [],
     clueGraph: { memoryNodes: 0, evidenceLeads: 0 },
+  }));
+}
+
+export function findNearbyCamerasForCurrentCase(locationLabel: string, radiusMeters = 1200): Promise<NearbyCameraSearchResult> {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<NearbyCameraSearchResult>("/api/evidence/nearby-cameras", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({ caseId, locationLabel, radiusMeters }),
+  }).catch(() => ({
+    caseId,
+    locationLabel,
+    radiusMeters,
+    center: { lat: 0, lon: 0, displayName: "Local fallback" },
+    cameras: [],
+    provider: "local-fallback",
+    hint: "Nearby camera lookup unavailable. Try again shortly.",
+  }));
+}
+
+export function lookupMerchantTransactionForCurrentCase(params: { transactionId: string; googleMerchantId?: string }) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<MerchantTransactionLookupResult>("/api/evidence/merchant-transaction", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({
+      caseId,
+      merchantTransactionId: params.transactionId,
+      googleMerchantId: params.googleMerchantId,
+    }),
+  }).catch(() => ({
+    caseId,
+    provider: "local-fallback",
+    transactionId: params.transactionId,
+    googleMerchantId: params.googleMerchantId || "",
+    transaction: null,
+    hint: "Merchant lookup unavailable. Keep the merchant transaction ID and timestamp as preservation evidence.",
   }));
 }
 
@@ -724,6 +845,32 @@ export function generateCrossExamination(caseId: string, fragments: Array<{ cont
     question: "Can you clearly state what you remember first, without guessing?",
     coaching: "Answer in short factual lines. It is okay to say you do not remember exact sequence.",
     threatType: "timeline pressure",
+  }));
+}
+
+export function queryVirodhiForCurrentCase(params: {
+  query: string;
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
+}) {
+  const caseId = victimSession?.caseId || "demo-case-001";
+  return request<VirodhiQueryResult>("/api/ai/virodhi-query", {
+    method: "POST",
+    headers: {
+      "x-case-id": caseId,
+    },
+    body: JSON.stringify({
+      caseId,
+      query: params.query,
+      history: params.history || [],
+    }),
+  }).catch(() => ({
+    caseId,
+    provider: "local-fallback",
+    answer: "Virodhi is currently unavailable. Continue by tightening one timeline anchor and one corroborating evidence point.",
+    attackVectors: ["Timeline ambiguity", "Delay-based credibility challenge"],
+    gapsToFix: ["Add one specific time window", "Name one independent corroboration source"],
+    recommendedEvidence: ["Call log timestamps", "Nearest CCTV preservation request"],
+    confidence: 0.3,
   }));
 }
 

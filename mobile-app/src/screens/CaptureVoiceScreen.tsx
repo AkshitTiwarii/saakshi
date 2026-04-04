@@ -137,6 +137,7 @@ export function CaptureVoiceScreen({ navigation }: Props) {
           `[voice-meta] transcriptProvided=${clean ? "yes" : "no"}`,
         ],
         source: "mobile-capture-voice",
+        forceCloudSync: true,
       }).catch(() => null);
 
       const hashText = saveResult?.integrity?.latestHash
@@ -144,8 +145,8 @@ export function CaptureVoiceScreen({ navigation }: Props) {
         : "";
       setStatus(
         saveResult?.localOnly
-          ? `Voice testimony saved locally.${hashText}`
-          : `Voice testimony synced to case.${hashText}`
+          ? `Voice testimony saved locally only (backend sync failed).${hashText}`
+          : `Voice testimony synced to case (${Number(saveResult?.fragmentCount || 0)} total fragments).${hashText}`
       );
     } finally {
       setSubmitting(false);

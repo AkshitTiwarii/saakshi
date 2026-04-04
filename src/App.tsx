@@ -1045,12 +1045,12 @@ const OfficerLanding = () => {
                   >
                     Enter Officer Portal <ArrowRight size={18} />
                   </button>
-                  <button
+                  {/* <button
                     onClick={() => navigate('/screen-map')}
                     className="inline-flex items-center gap-2 rounded-full border border-outline bg-white px-6 py-3.5 font-bold text-on-surface hover:bg-surface-container-low transition-all"
                   >
                     View App Map
-                  </button>
+                  </button> */}
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-4 pt-4">

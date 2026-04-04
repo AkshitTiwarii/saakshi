@@ -6,6 +6,7 @@ import { BottomNav } from "../components/BottomNav";
 import { colors } from "../theme/colors";
 import {
   generateCrossExamination,
+  getVictimCaseOverviewForCurrentSession,
   getVictimSession,
   generateModeAwareCoachReply,
   persistVoiceChatMessage,
@@ -19,6 +20,22 @@ export function PareekshaScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [coachInput, setCoachInput] = useState("");
   const [coachChat, setCoachChat] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
+  const [contextHint, setContextHint] = useState("Loading shared case context...");
+
+  React.useEffect(() => {
+    getVictimCaseOverviewForCurrentSession()
+      .then((overview) => {
+        if (!overview) {
+          setContextHint("Case context unavailable. Practice is running with local statement only.");
+          return;
+        }
+        const summary = String(overview.profile?.incidentSummary || "").trim();
+        setContextHint(
+          `Practice context includes ${overview.fragments.length} stored fragments${summary ? ", incident summary loaded" : ""}.`
+        );
+      })
+      .catch(() => setContextHint("Could not load shared context right now."));
+  }, []);
 
   const run = async () => {
     if (!statement.trim()) return;
@@ -45,6 +62,10 @@ export function PareekshaScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Pareeksha Practice</Text>
         <Text style={styles.sub}>Practice cross-exam in a controlled setting.</Text>
+        <View style={styles.contextBanner}>
+          <Text style={styles.contextTitle}>Shared Case Context</Text>
+          <Text style={styles.contextBody}>{contextHint}</Text>
+        </View>
         <TextInput
           value={statement}
           onChangeText={setStatement}
@@ -93,6 +114,24 @@ const styles = StyleSheet.create({
   scroll: { gap: 10, paddingBottom: 124 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
   sub: { color: colors.mutedInk, fontSize: 13, lineHeight: 20 },
+  contextBanner: {
+    backgroundColor: "#EEF2FF",
+    borderWidth: 1,
+    borderColor: "#C6D2FF",
+    borderRadius: 14,
+    padding: 10,
+    gap: 4,
+  },
+  contextTitle: {
+    color: "#314893",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  contextBody: {
+    color: "#3F57A7",
+    fontSize: 12,
+    lineHeight: 17,
+  },
   input: { backgroundColor: colors.white, borderRadius: 16, padding: 14, minHeight: 140, color: colors.ink, textAlignVertical: "top" },
   button: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 13, alignItems: "center" },
   buttonLabel: { color: colors.white, fontWeight: "700", fontSize: 15 },
