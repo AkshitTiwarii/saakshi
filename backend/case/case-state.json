@@ -12,6 +12,18 @@
       "caseNumber": "SAAK-2026-E57C0",
       "victimUniqueId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
       "createdAt": "2026-03-28T20:14:44.819Z"
+    },
+    {
+      "caseId": "daf5d11f-6357-4e96-b0f1-1add84334657",
+      "caseNumber": "SAAK-2026-4E7AE",
+      "victimUniqueId": "web-user_3BWOl06HYd53CtcV6NNceFSildJ",
+      "createdAt": "2026-04-04T06:58:32.005Z"
+    },
+    {
+      "caseId": "4d6b1159-07bc-4a4b-acf8-e3647733b8bf",
+      "caseNumber": "SAAK-2026-C1D8B",
+      "victimUniqueId": "web-guest-42jacwwfaj",
+      "createdAt": "2026-04-04T06:58:33.357Z"
     }
   ],
   "officerDesignations": [
@@ -50,6 +62,14 @@
     [
       "user_3BWOl06HYd53CtcV6NNceFSildJ",
       "584b6b23-aeb8-4884-86af-38b9367c09ae"
+    ],
+    [
+      "web-user_3BWOl06HYd53CtcV6NNceFSildJ",
+      "daf5d11f-6357-4e96-b0f1-1add84334657"
+    ],
+    [
+      "web-guest-42jacwwfaj",
+      "4d6b1159-07bc-4a4b-acf8-e3647733b8bf"
     ]
   ],
   "victimDetailsByCase": [
@@ -84,6 +104,38 @@
           "onboardingCompleted": false,
           "lastUpdatedAt": "2026-03-28T20:25:11.967Z",
           "source": "mobile-settings-export-sync"
+        }
+      }
+    ],
+    [
+      "daf5d11f-6357-4e96-b0f1-1add84334657",
+      {
+        "profile": {
+          "victimUniqueId": "web-user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "email": "web-user_3BWOl06HYd53CtcV6NNceFSildJ@local.saakshi",
+          "displayName": "",
+          "updatedAt": "2026-04-04T06:58:32.005Z"
+        },
+        "fragments": [],
+        "metadata": {
+          "authProvider": "google",
+          "onboardingCompleted": false
+        }
+      }
+    ],
+    [
+      "4d6b1159-07bc-4a4b-acf8-e3647733b8bf",
+      {
+        "profile": {
+          "victimUniqueId": "web-guest-42jacwwfaj",
+          "email": "web-guest-42jacwwfaj@local.saakshi",
+          "displayName": "",
+          "updatedAt": "2026-04-04T06:58:33.357Z"
+        },
+        "fragments": [],
+        "metadata": {
+          "authProvider": "google",
+          "onboardingCompleted": false
         }
       }
     ]
@@ -132,6 +184,34 @@
           "createdAt": "2026-03-28T20:25:11.968Z",
           "actorId": "user_3BWOl06HYd53CtcV6NNceFSildJ",
           "payloadType": "victim_fragments"
+        }
+      ]
+    ],
+    [
+      "daf5d11f-6357-4e96-b0f1-1add84334657",
+      [
+        {
+          "entryId": "integrity-6a7862ca-94ce-49f4-b080-be427e1e4aac",
+          "caseId": "daf5d11f-6357-4e96-b0f1-1add84334657",
+          "prevHash": "GENESIS",
+          "currentHash": "cdd2bc092652bf63904b59bd5114b5e3e6e33bf4ea845f65e99ca68d6e489a90",
+          "createdAt": "2026-04-04T06:58:32.007Z",
+          "actorId": "web-user_3BWOl06HYd53CtcV6NNceFSildJ",
+          "payloadType": "victim_profile"
+        }
+      ]
+    ],
+    [
+      "4d6b1159-07bc-4a4b-acf8-e3647733b8bf",
+      [
+        {
+          "entryId": "integrity-b9f86e0a-e1c1-4746-81ff-647628e61657",
+          "caseId": "4d6b1159-07bc-4a4b-acf8-e3647733b8bf",
+          "prevHash": "GENESIS",
+          "currentHash": "8a5aeed90d604662faf96c4478cb23f6e686946a5e4bb1372dd50655951bf41a",
+          "createdAt": "2026-04-04T06:58:33.357Z",
+          "actorId": "web-guest-42jacwwfaj",
+          "payloadType": "victim_profile"
         }
       ]
     ]

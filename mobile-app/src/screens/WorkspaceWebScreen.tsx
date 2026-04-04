@@ -141,7 +141,7 @@ export function WorkspaceWebScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.panel}>
-          <Text style={styles.panelTitle}>War Room Output</Text>
+          <Text style={styles.panelTitle}>Raksha Output</Text>
           <Text style={styles.blockResult}>{strategyResult || "Adversarial analysis appears here."}</Text>
         </View>
 

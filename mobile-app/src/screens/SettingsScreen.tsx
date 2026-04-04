@@ -26,6 +26,8 @@ export function SettingsScreen({ navigation }: Props) {
   const [incidentSummary, setIncidentSummary] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const victimSession = getVictimSession();
+  const caseNumber = victimSession?.caseNumber || "SAAKSHI-PENDING";
+  const saakshiId = caseNumber.replace("SAAK", "SKS");
 
   const userName = user?.fullName || user?.firstName || "Not set";
   const email = user?.primaryEmailAddress?.emailAddress || "Not set";
@@ -96,6 +98,8 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={styles.value}>{victimSession?.caseId || "Provisioning in progress"}</Text>
           <Text style={styles.label}>Case Number</Text>
           <Text style={styles.value}>{victimSession?.caseNumber || "Provisioning in progress"}</Text>
+          <Text style={styles.label}>SAAKSHI ID</Text>
+          <Text style={styles.value}>{saakshiId}</Text>
           <Text style={styles.label}>Age</Text>
           <Text style={styles.value}>{user?.unsafeMetadata?.age ? String(user.unsafeMetadata.age) : "Not provided"}</Text>
           <Text style={styles.label}>Last Logged In</Text>
@@ -151,14 +155,19 @@ export function SettingsScreen({ navigation }: Props) {
           <Text style={styles.label}>Safety PIN</Text>
           <TextInput
             value={pin}
-            onChangeText={setPin}
-            placeholder="Set 4-digit PIN"
+            onChangeText={(value) => {
+              const digits = value.replace(/[^0-9]/g, "").slice(0, 6);
+              setPin(digits);
+              void saveScreenDraft("settings.safetyPin", digits);
+            }}
+            placeholder="Set 6-digit PIN"
             placeholderTextColor={colors.mutedInk}
             style={styles.input}
             keyboardType="number-pad"
             secureTextEntry
-            maxLength={4}
+            maxLength={6}
           />
+          <Text style={styles.pinHint}>Only you can open sensitive case data with this 6-digit safety PIN.</Text>
         </View>
 
         <View style={styles.cardRow}>
@@ -253,6 +262,11 @@ const styles = StyleSheet.create({
   },
   label: { color: colors.ink, fontWeight: "700" },
   value: { color: colors.mutedInk, marginBottom: 2 },
+  pinHint: {
+    color: colors.mutedInk,
+    fontSize: 11,
+    lineHeight: 16,
+  },
   input: {
     borderWidth: 1,
     borderColor: colors.cloud,

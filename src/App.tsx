@@ -42,7 +42,13 @@ import {
   Clock,
   Info,
   PenTool,
-  LayoutGrid
+  LayoutGrid,
+  ArrowRight,
+  BadgeCheck,
+  FileCheck2,
+  ClipboardList,
+  Activity,
+  Sparkles as SparklesIcon,
 } from 'lucide-react';
 import { EMOTIONS, CAPTURE_METHODS } from './constants';
 import { Fragment, Evidence, Case } from './types';
@@ -984,6 +990,138 @@ const Protected = ({ children }: { children: React.ReactNode }) => (
   </>
 );
 
+const OfficerLanding = () => {
+  const navigate = useNavigate();
+
+  const highlights = [
+    { title: 'Live Case Queue', value: 'Designated cases only', icon: ClipboardList },
+    { title: 'Integrity Proofs', value: 'Hash-verified reports', icon: FileCheck2 },
+    { title: 'Access Control', value: 'Consent + role scoped', icon: BadgeCheck },
+  ];
+
+  const journeyCards = [
+    {
+      title: 'Review the case',
+      text: 'Inspect complete survivor uploads, metadata, timeline fragments, and officer-ready summaries in one place.',
+    },
+    {
+      title: 'Verify integrity',
+      text: 'Check hash chains, anchored evidence, and report validity before using any output in review work.',
+    },
+    {
+      title: 'Export a polished PDF',
+      text: 'Generate a professional report packet with structured sections and clean download flow.',
+    },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(178,95,71,0.12),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(127,155,118,0.14),_transparent_30%),linear-gradient(180deg,_#f7f1e7_0%,_#f4ede3_55%,_#eef2f8_100%)]">
+      <div className="mx-auto max-w-7xl px-5 md:px-8 py-6 md:py-8">
+        <div className="rounded-[2rem] border border-white/70 bg-white/78 backdrop-blur-2xl shadow-[0_24px_80px_rgba(46,34,22,0.12)] overflow-hidden">
+          <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-0">
+            <div className="p-7 md:p-10 lg:p-12 relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+              <div className="absolute -bottom-10 -left-10 h-44 w-44 rounded-full bg-secondary/10 blur-3xl" />
+
+              <div className="relative max-w-2xl space-y-8">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary">
+                  <SparklesIcon size={16} />
+                  Officer review workspace
+                </div>
+
+                <div className="space-y-4">
+                  <h1 className="text-5xl md:text-7xl font-black tracking-tight text-on-surface leading-[0.95]">
+                    Open a calmer, sharper case review flow.
+                  </h1>
+                  <p className="text-lg md:text-xl text-on-surface-variant max-w-2xl leading-relaxed">
+                    Start with a living landing page that surfaces live queue status, integrity readiness, and the exact review actions available to a designated officer.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => navigate('/officer-portal')}
+                    className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3.5 font-bold text-on-primary shadow-[0_14px_28px_rgba(178,95,71,0.28)] hover:brightness-95 transition-all"
+                  >
+                    Enter Officer Portal <ArrowRight size={18} />
+                  </button>
+                  <button
+                    onClick={() => navigate('/screen-map')}
+                    className="inline-flex items-center gap-2 rounded-full border border-outline bg-white px-6 py-3.5 font-bold text-on-surface hover:bg-surface-container-low transition-all"
+                  >
+                    View App Map
+                  </button>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4 pt-4">
+                  {highlights.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={item.title} className="rounded-2xl border border-outline bg-white/80 p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-bold text-on-surface">{item.title}</div>
+                            <div className="text-xs text-on-surface-variant mt-1">{item.value}</div>
+                          </div>
+                          <div className="h-11 w-11 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                            <Icon size={20} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-surface-container-low border-l border-white/70 p-7 md:p-10 lg:p-12">
+              <div className="space-y-4">
+                <div className="rounded-[1.75rem] bg-[#0f172a] text-white p-6 shadow-[0_20px_40px_rgba(15,23,42,0.2)]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.24em] text-white/60">Case Operations</div>
+                      <div className="mt-2 text-2xl font-black">Ready for review</div>
+                    </div>
+                    <div className="h-14 w-14 rounded-2xl bg-white/10 flex items-center justify-center">
+                      <Shield size={26} />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-3">
+                    {journeyCards.map((card, index) => (
+                      <div key={card.title} className="rounded-2xl bg-white/8 border border-white/10 p-4">
+                        <div className="text-sm font-bold text-white">0{index + 1}. {card.title}</div>
+                        <div className="text-sm text-white/72 mt-1 leading-relaxed">{card.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[1.75rem] border border-outline bg-white p-6 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.22em] text-on-surface-variant">Live status</div>
+                      <div className="text-2xl font-black text-on-surface mt-1">Workspace, not wallpaper</div>
+                    </div>
+                    <div className="h-12 w-12 rounded-full bg-secondary/10 text-secondary flex items-center justify-center">
+                      <Activity size={22} />
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-3 text-sm text-on-surface-variant">
+                    <div className="rounded-xl bg-surface-container-low p-3">Designated cases load in the next step.</div>
+                    <div className="rounded-xl bg-surface-container-low p-3">Integrity checks are available before export.</div>
+                    <div className="rounded-xl bg-surface-container-low p-3">PDF reports now use a more professional structured layout.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -992,7 +1130,7 @@ export default function App() {
       <AuthHeader />
       <AnimatePresence mode="wait">
         <Routes>
-          <Route path="/" element={<Protected><OfficerPortalV2 /></Protected>} />
+          <Route path="/" element={<OfficerLanding />} />
           <Route path="/safe-start" element={<SplashScreen />} />
           <Route path="/onboarding" element={<OnboardingScreen />} />
           <Route path="/feeling-checkin" element={<FeelingCheckIn />} />
@@ -1011,7 +1149,7 @@ export default function App() {
           <Route path="/officer-portal" element={<Protected><OfficerPortalV2 /></Protected>} />
           <Route path="/officer-portal/case/:caseId" element={<Protected><OfficerCaseWorkspace /></Protected>} />
           <Route path="/admin-portal" element={<Protected><AdminPortal /></Protected>} />
-          <Route path="*" element={<Protected><OfficerPortalV2 /></Protected>} />
+          <Route path="*" element={<OfficerLanding />} />
         </Routes>
       </AnimatePresence>
     </Router>

@@ -490,6 +490,51 @@ function buildEvidenceLeads(fragments: string[], queryHint?: string) {
       rationale: "Communication records can validate sequence and contact nodes under legal process.",
     });
   }
+  if (text.includes("train") || text.includes("rail") || text.includes("irctc")) {
+    leads.push({
+      type: "rail",
+      query: "Prepare request for IRCTC booking and journey timeline confirmation",
+      source: "IRCTC records (lawful disclosure workflow)",
+      confidence: 0.74,
+      rationale: "Rail records can corroborate location and time anchors when journey claims are present.",
+    });
+  }
+  if (text.includes("fastag") || text.includes("toll") || text.includes("highway")) {
+    leads.push({
+      type: "toll",
+      query: "Prepare FASTag and toll-plaza passage preservation request",
+      source: "NHAI / toll operator logs (authorized request)",
+      confidence: 0.72,
+      rationale: "Toll events help reconstruct vehicle movement chronology.",
+    });
+  }
+  if (text.includes("upi") || text.includes("payment") || text.includes("paid") || text.includes("bank")) {
+    leads.push({
+      type: "finance",
+      query: "Collect UPI and card transaction timestamps around key memory nodes",
+      source: "Bank statements / PSP logs (authorized retrieval)",
+      confidence: 0.7,
+      rationale: "Transaction traces can validate time and place claims.",
+    });
+  }
+  if (text.includes("tower") || text.includes("location") || text.includes("network") || text.includes("cell")) {
+    leads.push({
+      type: "telecom-location",
+      query: "Draft CDR and cell-tower location request for incident window",
+      source: "Telecom provider records (court/police authorization required)",
+      confidence: 0.71,
+      rationale: "Cell-tower traces can support geographic presence assertions.",
+    });
+  }
+  if (text.includes("flight") || text.includes("hotel") || text.includes("booking") || text.includes("check-in")) {
+    leads.push({
+      type: "travel-hospitality",
+      query: "Preserve flight and hotel booking metadata tied to timeline",
+      source: "Airline / hospitality provider records (lawful request)",
+      confidence: 0.69,
+      rationale: "Travel and stay records provide independent timeline corroboration.",
+    });
+  }
 
   if (!leads.length) {
     leads.push({

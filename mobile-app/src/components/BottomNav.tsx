@@ -17,7 +17,7 @@ const items: Array<{ key: RouteName; label: string; icon: keyof typeof MaterialC
   { key: "WebWorkspace", label: "Command", icon: "console-line" },
   { key: "CaptureMethod", label: "Capture", icon: "database-plus-outline" },
   { key: "Khojak", label: "Khojak", icon: "magnify" },
-  { key: "WarRoom", label: "War", icon: "sword-cross" },
+  { key: "Raksha", label: "Raksha", icon: "shield-star-outline" },
   { key: "Settings", label: "Settings", icon: "cog-outline" },
 ];
 

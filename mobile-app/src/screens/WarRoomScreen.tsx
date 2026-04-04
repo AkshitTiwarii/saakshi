@@ -18,8 +18,9 @@ import {
   persistVoiceChatMessage,
   saveScreenDraft,
 } from "../services/apiClient";
+import { KAAL_CHAKRA_DECAY_ALERTS } from "../constants/saakshi";
 
-type Props = NativeStackScreenProps<RootStackParamList, "WarRoom">;
+type Props = NativeStackScreenProps<RootStackParamList, "Raksha">;
 
 export function WarRoomScreen({ navigation }: Props) {
   const [facts, setFacts] = useState("");
@@ -125,8 +126,8 @@ export function WarRoomScreen({ navigation }: Props) {
       setAnalysis(output);
       void saveScreenDraft("warroom.analysis", output);
     } catch {
-      setAnalysis("War Room could not complete this run. Check backend and API keys, then retry.");
-      void saveScreenDraft("warroom.analysis", "War Room could not complete this run. Check backend and API keys, then retry.");
+      setAnalysis("Raksha could not complete this run. Check backend and API keys, then retry.");
+      void saveScreenDraft("warroom.analysis", "Raksha could not complete this run. Check backend and API keys, then retry.");
     } finally {
       setLoading(false);
     }
@@ -162,7 +163,7 @@ export function WarRoomScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>War Room</Text>
+        <Text style={styles.title}>Raksha</Text>
         <Text style={styles.sub}>Stress-test your statement before external review.</Text>
         <TextInput
           value={facts}
@@ -177,6 +178,17 @@ export function WarRoomScreen({ navigation }: Props) {
         </Pressable>
         <View style={styles.output}>
           <Text style={styles.outputText}>{analysis || "Findings appear here."}</Text>
+        </View>
+
+        <View style={styles.kaalChakraPanel}>
+          <Text style={styles.kaalTitle}>KAAL CHAKRA | Evidence Decay Alerts</Text>
+          {KAAL_CHAKRA_DECAY_ALERTS.map((alert) => (
+            <View key={alert.id} style={styles.kaalItem}>
+              <Text style={styles.kaalMeta}>{alert.level} | {alert.window}</Text>
+              <Text style={styles.kaalSource}>{alert.source}</Text>
+              <Text style={styles.kaalAction}>{alert.action}</Text>
+            </View>
+          ))}
         </View>
 
         <View style={styles.chatPanel}>
@@ -202,7 +214,7 @@ export function WarRoomScreen({ navigation }: Props) {
         </View>
       </ScrollView>
 
-      <BottomNav current="WarRoom" onNavigate={(r) => navigation.navigate(r as any)} />
+      <BottomNav current="Raksha" onNavigate={(r) => navigation.navigate(r as any)} />
     </SafeAreaView>
   );
 }
@@ -217,6 +229,42 @@ const styles = StyleSheet.create({
   buttonLabel: { color: colors.white, fontWeight: "700", fontSize: 15 },
   output: { backgroundColor: colors.white, borderRadius: 16, padding: 12, minHeight: 180 },
   outputText: { color: colors.mutedInk, fontSize: 14, lineHeight: 20 },
+  kaalChakraPanel: {
+    backgroundColor: "#FFF7EC",
+    borderWidth: 1,
+    borderColor: "#F1D8B8",
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+  },
+  kaalTitle: {
+    color: "#6F4416",
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  kaalItem: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#F1E4D0",
+    borderRadius: 12,
+    padding: 10,
+    gap: 3,
+  },
+  kaalMeta: {
+    color: "#8E5A22",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  kaalSource: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  kaalAction: {
+    color: colors.mutedInk,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   chatPanel: {
     backgroundColor: colors.white,
     borderRadius: 16,

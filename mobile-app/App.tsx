@@ -34,7 +34,7 @@ export type RootStackParamList = {
   CaptureDraw: { mood?: string } | undefined;
   CaptureUpload: { mood?: string } | undefined;
   Khojak: undefined;
-  WarRoom: undefined;
+  Raksha: undefined;
   Pareeksha: undefined;
   Settings: undefined;
   Docs: undefined;
@@ -140,7 +140,7 @@ function MobileNavigator() {
             <Stack.Screen name="CaptureDraw" component={CaptureDrawScreen} />
             <Stack.Screen name="CaptureUpload" component={CaptureUploadScreen} />
             <Stack.Screen name="Khojak" component={KhojakScreen} />
-            <Stack.Screen name="WarRoom" component={WarRoomScreen} />
+            <Stack.Screen name="Raksha" component={WarRoomScreen} />
             <Stack.Screen name="Pareeksha" component={PareekshaScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
             <Stack.Screen name="Docs" component={DocsScreen} />

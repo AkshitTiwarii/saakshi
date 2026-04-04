@@ -12,7 +12,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Dashboard">;
 const cards = [
   { title: "Capture", route: "CaptureMethod" as const, desc: "Speak, write, draw, or upload", tone: ["#B25F47", "#924631"] as const },
   { title: "Khojak", route: "Khojak" as const, desc: "Find supporting evidence", tone: ["#7F9B76", "#5F7D57"] as const },
-  { title: "War Room", route: "WarRoom" as const, desc: "Plan legal next steps", tone: ["#8A4D3D", "#6A3528"] as const },
+  { title: "Raksha", route: "Raksha" as const, desc: "Plan legal next steps", tone: ["#8A4D3D", "#6A3528"] as const },
   { title: "Pareeksha", route: "Pareeksha" as const, desc: "Prepare with confidence", tone: ["#6B8290", "#4D646F"] as const },
   { title: "Command", route: "WebWorkspace" as const, desc: "Case overview and sync", tone: ["#736357", "#57483E"] as const },
   { title: "Account", route: "Settings" as const, desc: "Privacy and safety", tone: ["#5A4B40", "#3E342E"] as const },

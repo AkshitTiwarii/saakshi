@@ -5,42 +5,21 @@ import {
   Download, 
   Share2, 
   History, 
-  ChevronRight, 
   AlertCircle,
   ShieldCheck,
   Scale
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { LEGAL_DOCUMENT_TEMPLATES } from '../constants';
 
 export const DocsScreen = () => {
   const navigate = useNavigate();
 
-  const documents = [
-    {
-      id: 1,
-      title: 'Preliminary FIR Draft',
-      type: 'LEGAL',
-      status: 'READY',
-      date: 'Mar 24, 2026',
-      description: 'Structured narrative based on 12 fragments.'
-    },
-    {
-      id: 2,
-      title: 'Evidence Timeline',
-      type: 'EVIDENCE',
-      status: 'UPDATING',
-      date: 'Mar 25, 2026',
-      description: 'Chronological mapping of digital & sensory clues.'
-    },
-    {
-      id: 3,
-      title: 'Witness Impact Statement',
-      type: 'PERSONAL',
-      status: 'DRAFT',
-      date: 'Mar 25, 2026',
-      description: 'Emotional context and psychological impact summary.'
-    }
-  ];
+  const documents = LEGAL_DOCUMENT_TEMPLATES.map((template, index) => ({
+    ...template,
+    status: index < 2 ? 'READY' : index < 5 ? 'UPDATING' : 'DRAFT',
+    date: index < 3 ? 'Apr 04, 2026' : 'Apr 03, 2026',
+  }));
 
   return (
     <div className="min-h-screen bg-surface pb-32">

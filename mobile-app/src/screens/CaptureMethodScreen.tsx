@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { RootStackParamList } from "../../App";
 import { colors } from "../theme/colors";
 import { BottomNav } from "../components/BottomNav";
+import { SUPPORTED_INDIAN_LANGUAGES } from "../constants/saakshi";
 
 type Props = NativeStackScreenProps<RootStackParamList, "CaptureMethod">;
 
@@ -17,6 +18,7 @@ const methods = [
 export function CaptureMethodScreen({ route, navigation }: Props) {
   const mood = route.params?.mood || "unknown";
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [language, setLanguage] = useState("Hindi");
   const [apiResult, setApiResult] = useState<string>("Choose any way to begin. You can switch methods anytime.");
 
   const handleMethodPress = (methodId: string) => {
@@ -45,6 +47,34 @@ export function CaptureMethodScreen({ route, navigation }: Props) {
           <Text style={styles.flowLine}>1. Choose method</Text>
           <Text style={styles.flowLine}>2. Add details you are ready to share</Text>
           <Text style={styles.flowLine}>3. Saakshi helps organize clues for timeline and evidence</Text>
+        </View>
+
+        <View style={styles.flowCard}>
+          <Text style={styles.flowTitle}>Language + Safe Entry</Text>
+          <Text style={styles.flowLine}>Speak or write in your language. Your testimony is preserved with timestamped fragments.</Text>
+          <View style={styles.languageWrap}>
+            {SUPPORTED_INDIAN_LANGUAGES.slice(0, 8).map((item) => (
+              <Pressable
+                key={item}
+                style={[styles.langChip, language === item && styles.langChipActive]}
+                onPress={() => setLanguage(item)}
+              >
+                <Text style={[styles.langLabel, language === item && styles.langLabelActive]}>{item}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.flowLine}>Selected language: {language} (22-language support available in app settings)</Text>
+          <View style={styles.entryActions}>
+            <Pressable
+              style={styles.entryButton}
+              onPress={() => Linking.openURL("https://wa.me/919999999999?text=Mujhe%20help%20chahiye")}
+            >
+              <Text style={styles.entryButtonLabel}>WhatsApp Assist</Text>
+            </Pressable>
+            <Pressable style={styles.entryGhostButton} onPress={() => Linking.openURL("tel:181")}>
+              <Text style={styles.entryGhostLabel}>Call Helpline 181</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.list}>
@@ -125,6 +155,61 @@ const styles = StyleSheet.create({
     color: colors.mutedInk,
     fontSize: 12,
     lineHeight: 18,
+  },
+  languageWrap: {
+    marginTop: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  langChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.panelAlt,
+    borderWidth: 1,
+    borderColor: colors.cloud,
+  },
+  langChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accentStrong,
+  },
+  langLabel: {
+    color: colors.ink,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  langLabelActive: {
+    color: colors.white,
+  },
+  entryActions: {
+    marginTop: 8,
+    gap: 8,
+  },
+  entryButton: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  entryButtonLabel: {
+    color: colors.white,
+    fontWeight: "800",
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
+  entryGhostButton: {
+    backgroundColor: colors.panelAlt,
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.cloud,
+  },
+  entryGhostLabel: {
+    color: colors.ink,
+    fontWeight: "700",
+    fontSize: 12,
   },
   list: {
     gap: 14,

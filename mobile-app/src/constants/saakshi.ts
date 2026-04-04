@@ -1,0 +1,100 @@
+export const SUPPORTED_INDIAN_LANGUAGES = [
+  "Hindi",
+  "English (India)",
+  "Tamil",
+  "Telugu",
+  "Bengali",
+  "Marathi",
+  "Kannada",
+  "Malayalam",
+  "Gujarati",
+  "Punjabi",
+  "Odia",
+  "Assamese",
+  "Urdu",
+  "Sanskrit",
+  "Maithili",
+  "Konkani",
+  "Dogri",
+  "Kashmiri",
+  "Sindhi",
+  "Nepali",
+  "Manipuri",
+  "Bodo",
+];
+
+export const LEGAL_DOCUMENT_PACK = [
+  {
+    id: "fir-draft",
+    title: "FIR Draft (BNS aligned)",
+    status: "Ready",
+    detail: "First report draft from locked testimony fragments.",
+  },
+  {
+    id: "section-183",
+    title: "Section 183 Statement",
+    status: "Ready",
+    detail: "Magistrate statement draft mapped to timeline evidence.",
+  },
+  {
+    id: "preservation",
+    title: "Evidence Preservation Application",
+    status: "Urgent",
+    detail: "Template for CCTV, CDR, and message metadata preservation.",
+  },
+  {
+    id: "dlsa-aid",
+    title: "DLSA Legal Aid Application",
+    status: "Draft",
+    detail: "District legal aid request with survivor-safe metadata.",
+  },
+  {
+    id: "nalsa-compensation",
+    title: "NALSA Compensation Application",
+    status: "Draft",
+    detail: "Victim compensation filing packet and checklist.",
+  },
+  {
+    id: "protection-order",
+    title: "Protection Order Application",
+    status: "Draft",
+    detail: "Threat-response filing for immediate safety measures.",
+  },
+  {
+    id: "pocso-pack",
+    title: "POCSO Filing Packet",
+    status: "Conditional",
+    detail: "Minor-survivor specific legal flow and filing docs.",
+  },
+];
+
+export const KAAL_CHAKRA_DECAY_ALERTS = [
+  {
+    id: "cctv",
+    level: "HIGH",
+    source: "CCTV footage",
+    window: "15-90 days",
+    action: "File preservation application immediately.",
+  },
+  {
+    id: "cdr",
+    level: "MEDIUM",
+    source: "Call detail records (CDR)",
+    window: "1-2 years",
+    action: "Request telecom data through legal process.",
+  },
+  {
+    id: "upi",
+    level: "MEDIUM",
+    source: "UPI and card transactions",
+    window: "Varies by bank",
+    action: "Export transaction history for incident window.",
+  },
+  {
+    id: "ride",
+    level: "MEDIUM",
+    source: "Ride and travel records",
+    window: "Provider dependent",
+    action: "Preserve Ola/Uber/IRCTC records quickly.",
+  },
+];

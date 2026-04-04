@@ -4,24 +4,21 @@ import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "rea
 import { RootStackParamList } from "../../App";
 import { BottomNav } from "../components/BottomNav";
 import { colors } from "../theme/colors";
+import { LEGAL_DOCUMENT_PACK } from "../constants/saakshi";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Docs">;
-
-const sampleDocs = [
-  { id: "doc-1", title: "Timeline Notes", status: "Draft" },
-  { id: "doc-2", title: "Evidence Sheet", status: "Anchored" },
-  { id: "doc-3", title: "Counsel Summary", status: "Ready" },
-];
 
 export function DocsScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Case Documents</Text>
+      <Text style={styles.sub}>Auto-generated in English + your selected regional language.</Text>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {sampleDocs.map((doc) => (
+        {LEGAL_DOCUMENT_PACK.map((doc) => (
           <View key={doc.id} style={styles.card}>
             <Text style={styles.cardTitle}>{doc.title}</Text>
             <Text style={styles.cardStatus}>{doc.status}</Text>
+            <Text style={styles.cardDetail}>{doc.detail}</Text>
           </View>
         ))}
       </ScrollView>
@@ -38,10 +35,12 @@ export function DocsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.fog, paddingHorizontal: 20, paddingTop: 20, gap: 10 },
   title: { color: colors.ink, fontSize: 28, fontWeight: "800" },
+  sub: { color: colors.mutedInk, fontSize: 12, lineHeight: 18, marginBottom: 4 },
   scrollContent: { gap: 10, paddingBottom: 8 },
-  card: { backgroundColor: colors.white, borderRadius: 14, padding: 14 },
+  card: { backgroundColor: colors.white, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.cloud },
   cardTitle: { color: colors.ink, fontWeight: "700", fontSize: 16 },
   cardStatus: { color: colors.mutedInk, marginTop: 4 },
+  cardDetail: { color: colors.mutedInk, marginTop: 6, fontSize: 12, lineHeight: 18 },
   button: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 13, alignItems: "center" },
   buttonLabel: { color: colors.white, fontWeight: "700", fontSize: 15 },
 });

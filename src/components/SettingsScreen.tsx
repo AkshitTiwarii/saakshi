@@ -9,11 +9,13 @@ import {
   LogOut, 
   ChevronRight,
   Smartphone,
-  Fingerprint
+  Fingerprint,
+  Languages
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 import { signOut } from 'firebase/auth';
+import { SUPPORTED_LANGUAGES } from '../constants';
 
 export const SettingsScreen = () => {
   const navigate = useNavigate();
@@ -96,6 +98,34 @@ export const SettingsScreen = () => {
             </div>
           </div>
         ))}
+
+        <section className="space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant/60 px-2">Language Support</h3>
+          <div className="bg-white rounded-2xl shadow-sm border border-outline-variant/10 overflow-hidden">
+            <div className="px-6 py-4 border-b border-outline-variant/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Languages size={18} className="text-primary" />
+                <div>
+                  <p className="font-bold text-on-surface">Indian Language Coverage</p>
+                  <p className="text-xs text-on-surface-variant">Voice and text intake baseline configured for 22 official languages.</p>
+                </div>
+              </div>
+              <span className="text-xs font-black text-primary">{SUPPORTED_LANGUAGES.length}</span>
+            </div>
+            <div className="px-6 py-4">
+              <div className="flex flex-wrap gap-2">
+                {SUPPORTED_LANGUAGES.map((language) => (
+                  <span
+                    key={language.code}
+                    className="text-[10px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full bg-surface-container-low text-on-surface-variant"
+                  >
+                    {language.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
 
         <div className="space-y-3 pt-4">
           <button className="w-full px-6 py-4 bg-error/5 text-error rounded-2xl border border-error/10 flex items-center gap-4 font-bold hover:bg-error/10 transition-colors">
