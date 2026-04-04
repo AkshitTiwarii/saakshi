@@ -1558,9 +1558,8 @@ async function startServer() {
     : null;
 
   if (process.env.NODE_ENV === "production") {
-    if (ADMIN_EMAIL === "akshittiwari29@gmail.com" || ADMIN_PASSWORD === "@Akshittiwari2910") {
-      throw new Error("Refusing to boot in production with default admin credentials");
-    }
+    // Admin credentials are now required via environment variables and never default in code
+    // The above env var requirement will prevent unset credentials at startup
     if (!caseStateEncryptionSecret) {
       throw new Error("Refusing to boot in production without CASE_STATE_ENCRYPTION_KEY");
     }

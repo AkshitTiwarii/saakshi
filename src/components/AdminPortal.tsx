@@ -49,8 +49,8 @@ async function parseApiResponse(resp: Response) {
 }
 
 export function AdminPortal() {
-  const [adminEmail, setAdminEmail] = useState('akshittiwari29@gmail.com');
-  const [adminPassword, setAdminPassword] = useState('@Akshittiwari2910');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [adminToken, setAdminToken] = useState('');
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState('');
