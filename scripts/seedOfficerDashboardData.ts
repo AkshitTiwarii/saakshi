@@ -6,6 +6,7 @@ import * as path from 'path';
 async function seed() {
   const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
 
+  
   // Load service account key from environment or file
   let serviceAccount: any;
   if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
