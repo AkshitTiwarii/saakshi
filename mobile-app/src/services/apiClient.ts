@@ -9,8 +9,15 @@ import {
 } from "./localVault";
 
 const ENV_BASE_URL = String((globalThis as any)?.process?.env?.EXPO_PUBLIC_API_BASE_URL || "").trim();
-const BASE_URL = ENV_BASE_URL || (Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000");
+const LOCAL_DEV_BASE_URL = Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
+const BASE_URL = ENV_BASE_URL || LOCAL_DEV_BASE_URL;
 const REQUEST_TIMEOUT_MS = 12000;
+
+if (!ENV_BASE_URL) {
+  console.warn(
+    "Missing EXPO_PUBLIC_API_BASE_URL. Falling back to local emulator URL. On physical devices this will fail unless you set EXPO_PUBLIC_API_BASE_URL to a public backend URL."
+  );
+}
 
 export function getApiBaseUrl() {
   return BASE_URL;

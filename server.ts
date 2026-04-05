@@ -4190,12 +4190,21 @@ ${query}`,
         requestedFields,
       });
 
-      const hasActiveGrant = hasActorGrant({
+      const hasShareGrant = hasActorGrant({
         caseId,
         officerIdRaw: officerId,
         officerRole: role,
         purpose: (purpose === "lawyer_share" ? "lawyer_share" : "police_share") as "police_share" | "lawyer_share",
       });
+
+      const hasLegalExportGrant = hasActorGrant({
+        caseId,
+        officerIdRaw: officerId,
+        officerRole: role,
+        purpose: "legal_export",
+      });
+
+      const hasActiveGrant = hasShareGrant || hasLegalExportGrant;
 
       if (!hasActiveGrant) {
         logAuditEvent(
