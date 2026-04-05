@@ -36,10 +36,11 @@ const adminSessions = new Map<string, { email: string; createdAt: string }>();
 
 const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "").trim();
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "").trim();
+const isAdminAuthConfigured = Boolean(ADMIN_EMAIL && ADMIN_PASSWORD);
 
-if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-  throw new Error(
-    "Missing required environment variables: ADMIN_EMAIL and ADMIN_PASSWORD must be set. Do not commit credentials to git."
+if (!isAdminAuthConfigured) {
+  console.warn(
+    "Admin login is disabled until ADMIN_EMAIL and ADMIN_PASSWORD are configured in environment variables."
   );
 }
 
@@ -1546,7 +1547,7 @@ async function renderCaseReportPdfBuffer(
 async function startServer() {
   const app = express();
   const httpServer = createHttpServer(app);
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
   const googleNlpClient = process.env.GOOGLE_APPLICATION_CREDENTIALS
     ? new LanguageServiceClient()
     : null;
@@ -1558,8 +1559,6 @@ async function startServer() {
     : null;
 
   if (process.env.NODE_ENV === "production") {
-    // Admin credentials are now required via environment variables and never default in code
-    // The above env var requirement will prevent unset credentials at startup
     if (!caseStateEncryptionSecret) {
       throw new Error("Refusing to boot in production without CASE_STATE_ENCRYPTION_KEY");
     }
@@ -3751,6 +3750,12 @@ ${query}`,
    */
   app.post("/api/admin/login", (req, res) => {
     try {
+      if (!isAdminAuthConfigured) {
+        return res.status(503).json({
+          error: "Admin login is not configured. Set ADMIN_EMAIL and ADMIN_PASSWORD in server environment variables.",
+        });
+      }
+
       const email = String(req.body?.email || "").trim().toLowerCase();
       const password = String(req.body?.password || "");
 
