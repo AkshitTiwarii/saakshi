@@ -1558,10 +1558,10 @@ async function startServer() {
     ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
     : null;
 
-  if (process.env.NODE_ENV === "production") {
-    if (!caseStateEncryptionSecret) {
-      throw new Error("Refusing to boot in production without CASE_STATE_ENCRYPTION_KEY");
-    }
+  if (process.env.NODE_ENV === "production" && !caseStateEncryptionSecret) {
+    console.warn(
+      "CASE_STATE_ENCRYPTION_KEY is not set. Case-state persistence will run without encryption at rest until this env var is configured."
+    );
   }
 
   app.disable("x-powered-by");
