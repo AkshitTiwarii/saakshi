@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Saakshi",
-    "slug": "saakshi-mobile",
+    "slug": "saakshi",
     "scheme": "saakshi",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -9,7 +9,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.saakshi.mobile",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Saakshi uses your microphone to record trauma-safe voice memories before secure transcription."
+        "NSMicrophoneUsageDescription": "Saakshi uses your microphone to record trauma-safe voice memories before secure transcription.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -23,10 +24,15 @@
       "expo-font"
     ],
     "extra": {
-      "clerkPublishableKey": "pk_test_Z2FtZS1tdXN0YW5nLTgyLmNsZXJrLmFjY291bnRzLmRldiQ"
+      "clerkPublishableKey": "pk_test_Z2FtZS1tdXN0YW5nLTgyLmNsZXJrLmFjY291bnRzLmRldiQ",
+      "apiBaseUrl": "https://saakshi.onrender.com",
+      "eas": {
+        "projectId": "c8dbcef5-b707-4326-bd52-fb176f232569"
+      }
     },
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "owner": "akshittiwaris-organization"
   }
 }

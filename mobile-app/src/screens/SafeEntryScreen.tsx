@@ -31,6 +31,14 @@ export function SafeEntryScreen({ navigation }: Props) {
   const isClerkReady = isSignInLoaded && isSignUpLoaded;
 
   useEffect(() => {
+    void WebBrowser.warmUpAsync?.();
+
+    return () => {
+      void WebBrowser.coolDownAsync?.();
+    };
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
     (async () => {
       try {
@@ -105,7 +113,6 @@ export function SafeEntryScreen({ navigation }: Props) {
     try {
       const redirectUrl = AuthSession.makeRedirectUri({
         scheme: "saakshi",
-        path: "oauth-native-callback",
       });
 
       const result = await startOAuthFlow({ redirectUrl });

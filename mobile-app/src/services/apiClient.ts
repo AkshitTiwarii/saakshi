@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import {
   appendLocalCaseFragments,
   getCaseLocalSnapshot,
@@ -8,7 +9,8 @@ import {
   setStoredSession,
 } from "./localVault";
 
-const ENV_BASE_URL = String((globalThis as any)?.process?.env?.EXPO_PUBLIC_API_BASE_URL || "").trim();
+const expoExtra = (Constants.expoConfig?.extra || {}) as { apiBaseUrl?: string };
+const ENV_BASE_URL = String((globalThis as any)?.process?.env?.EXPO_PUBLIC_API_BASE_URL || expoExtra.apiBaseUrl || "").trim();
 const LOCAL_DEV_BASE_URL = Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 const BASE_URL = ENV_BASE_URL || LOCAL_DEV_BASE_URL;
 const REQUEST_TIMEOUT_MS = 12000;

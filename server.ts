@@ -3916,6 +3916,37 @@ ${query}`,
       });
 
       officerDesignations.push(designation);
+
+      const grantPurpose = role === "lawyer" ? "lawyer_share" : "police_share";
+      const activeMatchingGrant = listGrantsByCase(caseId).some((grant) => {
+        if (grant.status !== "active") return false;
+        if (grant.purpose !== grantPurpose) return false;
+        if (grant.granteeRole !== role) return false;
+        const grantActorId = String(grant.granteeActorId || "").trim();
+        return (
+          !grantActorId ||
+          grantActorId === scopedOfficerActorId ||
+          grantActorId === officerId
+        );
+      });
+
+      if (!activeMatchingGrant) {
+        createGrant({
+          grantId: `grant-${randomUUID()}`,
+          caseId,
+          grantedByActorId: adminId,
+          granteeActorId: scopedOfficerActorId,
+          granteeRole: role as any,
+          purpose: grantPurpose,
+          requestedFields: ["full_case_timeline", "victim_media", "ai_analysis"],
+          redactions: [],
+          policyVersion: "0.1.0-stub",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          expiresAt,
+        });
+      }
+
       persistCaseState();
 
       logAuditEvent(
