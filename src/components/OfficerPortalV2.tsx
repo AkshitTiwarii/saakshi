@@ -154,7 +154,20 @@ export function OfficerPortalV2() {
           `/api/case/${encodeURIComponent(caseId)}/details?officerId=${encodeURIComponent(officerId.trim())}&officerRole=${encodeURIComponent(actorRole)}`
         );
         if (!detailsResp.ok) {
-          throw new Error('Case details fetch failed after access approval');
+          const errorText = await detailsResp.text().catch(() => '');
+          setCaseDetails(null);
+          setSelectedCaseId(caseId);
+          setAccessResult({
+            approved: true,
+            reason: errorText || 'Access approved. Case details are temporarily unavailable, opening limited workspace.',
+            designationId: data.designationId,
+          });
+          navigate(
+            `/officer-portal/case/${encodeURIComponent(caseId)}?officerId=${encodeURIComponent(
+              officerId.trim()
+            )}&officerPost=${encodeURIComponent(role)}&officerRole=${encodeURIComponent(actorRole)}`
+          );
+          return;
         }
         const detailsData = (await detailsResp.json()) as DetailedCase;
         setCaseDetails(detailsData);
